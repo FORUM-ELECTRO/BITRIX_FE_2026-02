@@ -1,0 +1,105 @@
+/* === Контейнер аккордеона === */
+.menu-item-block.custom-leftmenu-item {
+    display: block;
+    position: relative;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* === Кнопка-заголовок: повторяет штатный .menu-item-link === */
+.custom-leftmenu-item > .menu-item-link {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    box-sizing: border-box;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    text-align: left;
+    font: inherit;
+    padding: 0;
+    margin: 0;
+    /* Отступы как у штатных пунктов — подгоните при необходимости */
+    min-height: 40px;
+    padding-left: 16px;
+    padding-right: 12px;
+}
+
+/* === Иконка (пустой бокс для выравнивания, даже если нет иконки) === */
+.custom-leftmenu-item .menu-item-icon-box {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    margin-right: 12px;
+    flex: 0 0 auto;
+}
+
+/* === Текст пункта === */
+.custom-leftmenu-item .menu-item-link-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* === Счётчик === */
+.custom-leftmenu-item .ui-counter {
+    margin: 0 8px 0 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 10px;
+    font-size: 11px;
+    line-height: 18px;
+    box-sizing: border-box;
+}
+
+/* === Стрелка === */
+.custom-leftmenu-item .menu-item-link-arrow {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    margin-right: 0;
+    flex: 0 0 auto;
+    transition: transform 0.2s ease;
+}
+
+.custom-leftmenu-item .custom-leftmenu-arrow-open {
+    transform: rotate(180deg);
+}
+
+/* === Подпункты === */
+.custom-leftmenu-item .menu-subitems {
+    /* Отступ слева = иконка(24px) + gap(12px) + базовый отступ(16px) = 52px */
+    padding-left: 52px;
+    padding-right: 12px;
+}
+
+.custom-leftmenu-item .menu-subitem-link {
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    text-decoration: none;
+    width: 100%;
+    min-height: 36px;
+    padding: 6px 0;
+}
+
+/* === Hover/Focus fallback === */
+.custom-leftmenu-item .menu-item-link:hover,
+.custom-leftmenu-item .menu-subitem-link:hover {
+    text-decoration: none;
+}
+
+.custom-leftmenu-item .menu-item-link:focus-visible {
+    outline: 2px solid var(--ui-color-primary, #2fc6f6);
+    outline-offset: -2px;
+}
