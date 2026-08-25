@@ -238,7 +238,7 @@ class CBPCompanySearchSberActivity extends BaseActivity
 
         // Для ИП передаём КПП = "0", для юрлиц — если передан
         if ($isIp) {
-            $data['organizations'][0]['kpp'] = '0';
+            $data['organizations'][0]['kpp'] = '';
         } elseif (!empty($kpp)) {
             $data['organizations'][0]['kpp'] = $kpp;
         }
@@ -270,6 +270,32 @@ class CBPCompanySearchSberActivity extends BaseActivity
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $error = curl_error($ch);
         curl_close($ch);
+
+        // Если токен истёк — обновляем и повторяем запрос
+        if ($httpCode === 401) {
+            $this->refreshToken();
+            // Создаём новый curl и повторяем запрос
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $apiUrl);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+            curl_setopt($ch, CURLOPT_TIMEOUT, $this->config['timeout'] ?? 30);
+            curl_setopt($ch, CURLOPT_SSLCERTTYPE, 'P12');
+            curl_setopt($ch, CURLOPT_SSLCERT, $this->config['cert_path']);
+            curl_setopt($ch, CURLOPT_SSLCERTPASSWD, $this->config['cert_password']);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Content-Type: application/json',
+                'Accept: application/json',
+                'Authorization: Bearer ' . $this->config['access_token'],
+            ]);
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $error = curl_error($ch);
+            curl_close($ch);
+        }
 
         if ($error) {
             throw new \Exception(Loc::getMessage('COMPANY_SEARCH_ERROR_CURL') . $error);
@@ -478,6 +504,38 @@ class CBPCompanySearchSberActivity extends BaseActivity
         }
 
         return $response;
+    }
+
+    /**
+     * Обновление токена
+     */
+    private function refreshToken()
+    {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, 'https://fintech.sberbank.ru:9443/ic/sso/api/v2/oauth/token');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
+            'client_id' => '35107',
+            'client_secret' => $this->config['client_secret'],
+            'grant_type' => 'refresh_token',
+            'refresh_token' => $this->config['refresh_token'] ?? ''
+        ]));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/x-www-form-urlencoded']);
+        curl_setopt($ch, CURLOPT_SSLCERTTYPE, 'P12');
+        curl_setopt($ch, CURLOPT_SSLCERT, $this->config['cert_path']);
+        curl_setopt($ch, CURLOPT_SSLCERTPASSWD, $this->config['cert_password']);
+
+        $response = curl_exec($ch);
+        curl_close($ch);
+
+        $data = json_decode($response, true);
+        if (empty($data['access_token'])) {
+            return;
+        }
+
+        $this->config['access_token'] = $data['access_token'];
+        $this->config['refresh_token'] = $data['refresh_token'];
     }
 
     /**
