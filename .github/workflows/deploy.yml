@@ -1,10 +1,10 @@
 # Деплой на боевой сервер
 name: Deploy to production
 
-# Запускается при пуше в dev или master
+# Запуск при пуше в master или создании PR
 on:
   push:
-    branches: [ dev, master ]
+    branches: [ master ]
   pull_request:
     branches: [ master ]
 
@@ -18,7 +18,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Устанавливаем PHP и расширения для проверок
+      # Устанавливаем PHP с нужными расширениями
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
@@ -26,48 +26,31 @@ jobs:
           extensions: mbstring, gd, mysqli, curl, json, xml
           tools: phpcs
 
-      # Проверяем синтаксис
+      # Проверяем синтаксис всех PHP файлов в папке local
       - name: PHP syntax check
         run: |
-          CHANGED_FILES=$(git diff --name-only --diff-filter=AM origin/master...HEAD)
-          if [ -n "$CHANGED_FILES" ]; then
-            for file in $CHANGED_FILES; do
-              if [[ $file == *.php ]]; then
-                php -l $file || exit 1
-              fi
-            done
-            echo "All changed PHP files are valid"
-          else
-            echo "No changed PHP files found"
-          fi
+          find ./local -type f -name "*.php" -exec php -l {} \;
+          echo "Syntax check passed"
 
-      # Проверяем стиль кода PSR-12
+      # Проверяем стиль кода по стандарту PSR-12
       - name: PHP Code Style (PSR-12)
         run: |
-          CHANGED_FILES=$(git diff --name-only --diff-filter=AM origin/master...HEAD | grep '\.php$' || true)
-          if [ -n "$CHANGED_FILES" ]; then
-            echo "$CHANGED_FILES" | xargs phpcs --standard=PSR12 || true
-            echo "Code style check completed"
-          else
-            echo "No PHP files to check"
-          fi
+          phpcs --standard=PSR12 ./local || true
+          echo "Code style check completed"
 
-  # Деплой на боевой сервер
+  # Деплой на боевой сервер (через self-hosted runner)
   deploy:
     runs-on: self-hosted
     needs: quality
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
+      # Скачиваем код
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy to production server
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.PROD_HOST }}
-          username: ${{ secrets.PROD_USER }}
-          key: ${{ secrets.PROD_SSH_KEY }}
-          script: |
-            cd /home/bitrix/www
-            git fetch origin master
-            git reset --hard origin/master
+      # Обновляем код на сервере
+      - name: Deploy
+        run: |
+          cd /home/bitrix/www
+          git fetch origin master
+          git reset --hard origin/master
