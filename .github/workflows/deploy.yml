@@ -54,7 +54,7 @@ jobs:
 
   # Деплой на боевой сервер
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: quality
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
