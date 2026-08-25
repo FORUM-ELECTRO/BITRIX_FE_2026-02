@@ -1,0 +1,6 @@
+<?php
+$MESS["INTRANET_USTAT_ONLINE_EMPTY"] = "Tiada data";
+$MESS["INTRANET_USTAT_ONLINE_FINISHED_DAY"] = "Jam keluar";
+$MESS["INTRANET_USTAT_ONLINE_HINT"] = "Pekerja dalam talian";
+$MESS["INTRANET_USTAT_ONLINE_STARTED_DAY"] = "Jam masuk";
+$MESS["INTRANET_USTAT_ONLINE_USERS"] = "Pekerja dalam talian";

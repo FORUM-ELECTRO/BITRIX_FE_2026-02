@@ -1,0 +1,4 @@
+<?
+$MESS["INTRANET_USTAT_ONLINE_FINISHED_DAY"] = "समापन समय";
+$MESS["INTRANET_USTAT_ONLINE_STARTED_DAY"] = "आरंभ समय";
+?>

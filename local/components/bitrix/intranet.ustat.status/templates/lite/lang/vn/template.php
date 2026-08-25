@@ -1,0 +1,7 @@
+<?
+$MESS["INTRANET_USTAT_RATING_COMMON_TAB"] = "Xếp hạng chung";
+$MESS["INTRANET_USTAT_RATING_INVOLVE_TAB"] = "Không tham gia";
+$MESS["INTRANET_USTAT_RATING_LOADING"] = "Đang tải...";
+$MESS["INTRANET_USTAT_WIDGET_LOADING"] = "Đang tải...";
+$MESS["INTRANET_USTAT_WIDGET_TITLE"] = "Nhịp sống Công ty";
+?>

@@ -1,0 +1,6 @@
+<?php
+$MESS["INTRANET_USTAT_ONLINE_EMPTY"] = "Sin datos";
+$MESS["INTRANET_USTAT_ONLINE_FINISHED_DAY"] = "Finalizaron";
+$MESS["INTRANET_USTAT_ONLINE_HINT"] = "Empleados en línea";
+$MESS["INTRANET_USTAT_ONLINE_STARTED_DAY"] = "Trabajando";
+$MESS["INTRANET_USTAT_ONLINE_USERS"] = "Empleados en línea";

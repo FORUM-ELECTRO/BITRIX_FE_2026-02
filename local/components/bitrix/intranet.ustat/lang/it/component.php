@@ -1,0 +1,22 @@
+<?php
+$MESS["INTRANET_USTAT_PERIOD_BUTTON_MONTH"] = "Mese";
+$MESS["INTRANET_USTAT_PERIOD_BUTTON_TODAY"] = "Oggi";
+$MESS["INTRANET_USTAT_PERIOD_BUTTON_WEEK"] = "Settimana";
+$MESS["INTRANET_USTAT_PERIOD_BUTTON_YEAR"] = "Anno";
+$MESS["INTRANET_USTAT_PERIOD_TITLE"] = "Intervallo di date:";
+$MESS["INTRANET_USTAT_SECTION_CRM_HELP_GENERAL"] = "Numero totale di azioni nel CRM (modifiche a lead, contatti e così via) nel periodo di tempo specificato.";
+$MESS["INTRANET_USTAT_SECTION_CRM_HELP_INVOLVEMENT"] = "Percentuale di utenti che sono stati attivi nel CRM nel periodo di tempo specificato. Questo numero è/potrebbe essere limitato dal numero di utenti che hanno accesso al CRM.";
+$MESS["INTRANET_USTAT_SECTION_DISK_HELP_GENERAL_MSGVER_1"] = "Numero totale di file caricati o modificati utilizzando Bitrix24 Drive nel periodo di tempo specificato.";
+$MESS["INTRANET_USTAT_SECTION_DISK_HELP_INVOLVEMENT_MSGVER_1"] = "Percentuale di utenti che implementano Bitrix24 Drive.";
+$MESS["INTRANET_USTAT_SECTION_IM_HELP_GENERAL"] = "Numero totale di messaggi immediati inviati e di chiamate effettuate nel periodo di tempo specificato.";
+$MESS["INTRANET_USTAT_SECTION_IM_HELP_INVOLVEMENT"] = "Mostra la percentuale di utenti che hanno inviato un messaggio istantaneo o effettuato una chiamata video/audio nel periodo di tempo specificato.";
+$MESS["INTRANET_USTAT_SECTION_LIKES_HELP_GENERAL"] = "Numero totale di \"Mi piace\" su messaggi, commenti, incarichi e altri elementi nella Intranet nel periodo di tempo specificato.";
+$MESS["INTRANET_USTAT_SECTION_LIKES_HELP_INVOLVEMENT"] = "Percentuale di utenti che hanno utilizzato la funzione \"Mi piace\" nel periodo di tempo specificato.";
+$MESS["INTRANET_USTAT_SECTION_MOBILE_HELP_GENERAL"] = "Numero totale di azioni nell'app mobile nel periodo di tempo specificato (messaggi, modifiche agli incarichi, CRM e così via).";
+$MESS["INTRANET_USTAT_SECTION_MOBILE_HELP_INVOLVEMENT"] = "Percentuale di utenti che hanno utilizzato l'app mobile nel periodo di tempo specificato.";
+$MESS["INTRANET_USTAT_SECTION_SOCNET_HELP_GENERAL"] = "Numero totale di messaggi e commenti pubblicati nel periodo di tempo specificato.";
+$MESS["INTRANET_USTAT_SECTION_SOCNET_HELP_INVOLVEMENT"] = "Mostra la percentuale di utenti che utilizzano la funzionalità social network nel periodo di tempo specificato.";
+$MESS["INTRANET_USTAT_SECTION_TASKS_HELP_GENERAL"] = "Numero totale di incarichi modificati (creati, commentati, cambiati e così via) nel periodo di tempo specificato.";
+$MESS["INTRANET_USTAT_SECTION_TASKS_HELP_INVOLVEMENT"] = "Percentuale di utenti che hanno utilizzato incarichi nel periodo di tempo specificato.";
+$MESS["INTRANET_USTAT_TOGGLE_COMPANY"] = "Azienda";
+$MESS["INTRANET_USTAT_TOGGLE_PEOPLE"] = "Persone";

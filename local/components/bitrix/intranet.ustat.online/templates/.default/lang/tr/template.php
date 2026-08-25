@@ -1,0 +1,6 @@
+<?php
+$MESS["INTRANET_USTAT_ONLINE_EMPTY"] = "Veri yok";
+$MESS["INTRANET_USTAT_ONLINE_FINISHED_DAY"] = "Mesai sonu";
+$MESS["INTRANET_USTAT_ONLINE_HINT"] = "Çevrimiçi çalışanlar";
+$MESS["INTRANET_USTAT_ONLINE_STARTED_DAY"] = "Mesai başı";
+$MESS["INTRANET_USTAT_ONLINE_USERS"] = "Çevrimiçi çalışanlar";

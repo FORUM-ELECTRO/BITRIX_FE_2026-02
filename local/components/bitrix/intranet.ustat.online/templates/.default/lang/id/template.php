@@ -1,0 +1,6 @@
+<?php
+$MESS["INTRANET_USTAT_ONLINE_EMPTY"] = "Tanpa data";
+$MESS["INTRANET_USTAT_ONLINE_FINISHED_DAY"] = "Di-clock out";
+$MESS["INTRANET_USTAT_ONLINE_HINT"] = "Karyawan online";
+$MESS["INTRANET_USTAT_ONLINE_STARTED_DAY"] = "Di-clock in";
+$MESS["INTRANET_USTAT_ONLINE_USERS"] = "Karyawan online";

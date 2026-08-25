@@ -1,0 +1,21 @@
+<?php
+$MESS["INTRANET_USTAT_COMPANY_ACTIVITY_TITLE"] = "Tasso di<br>attività";
+$MESS["INTRANET_USTAT_COMPANY_GRAPH_ACTIVITY"] = "Attivo";
+$MESS["INTRANET_USTAT_COMPANY_GRAPH_INVOLVEMENT"] = "Uso funzione";
+$MESS["INTRANET_USTAT_COMPANY_GRAPH_TITLE"] = "Ritmo attività azienda";
+$MESS["INTRANET_USTAT_COMPANY_HELP_ACTIVITY"] = "Indice attività: composto da tutte le attività degli utenti relative alle funzioni Intranet per un periodo di tempo specificato. L'Indice mostra quanto attivamente gli utenti stanno lavorando sui vari strumenti.";
+$MESS["INTRANET_USTAT_COMPANY_HELP_GENERAL"] = "Ritmo attività azienda è l'indicatore generale di attività utente nell'account Bitrix24 al momento attuale (composto da tutti gli utenti nell'ora precedente). ";
+$MESS["INTRANET_USTAT_COMPANY_HELP_INVOLVEMENT"] = "Livello di coinvolgimento: questo è un indicatore chiave che mostra quanto gli utenti hanno acquisito familiarità con le funzionalità di Bitrix24. Mostra quale percentuale dell'azienda utilizza almeno un quarto degli strumenti forniti.";
+$MESS["INTRANET_USTAT_COMPANY_HELP_RATING"] = "La valutazione è determinata dalla media dell'indice di attività individuale di tutti gli utenti che hanno eseguito almeno 1 azione nel periodo di tempo specificato.";
+$MESS["INTRANET_USTAT_COMPANY_INV_BAR_CRM"] = "Uso funzione: CRM";
+$MESS["INTRANET_USTAT_COMPANY_INV_BAR_DISK"] = "Uso funzione: Drive";
+$MESS["INTRANET_USTAT_COMPANY_INV_BAR_IM"] = "Uso funzione: Chat";
+$MESS["INTRANET_USTAT_COMPANY_INV_BAR_LIKES"] = "Uso funzione: Mi piace";
+$MESS["INTRANET_USTAT_COMPANY_INV_BAR_MOBILE"] = "Uso funzione: App mobile";
+$MESS["INTRANET_USTAT_COMPANY_INV_BAR_SOCNET"] = "Uso funzione: Social Network";
+$MESS["INTRANET_USTAT_COMPANY_INV_BAR_TASKS"] = "Uso funzione: Incarichi";
+$MESS["INTRANET_USTAT_COMPANY_INV_BAR_TOTAL"] = "Uso funzione";
+$MESS["INTRANET_USTAT_COMPANY_RATING_TITLE"] = "Valutazione generale";
+$MESS["INTRANET_USTAT_COMPANY_SECTION_ACTIVITY"] = "Attività";
+$MESS["INTRANET_USTAT_COMPANY_SECTION_INVOLVEMENT"] = "Uso funzione";
+$MESS["INTRANET_USTAT_COMPANY_SECTION_TELL_ABOUT"] = "Racconta";

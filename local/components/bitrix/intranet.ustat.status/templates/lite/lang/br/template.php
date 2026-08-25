@@ -1,0 +1,7 @@
+<?
+$MESS["INTRANET_USTAT_RATING_COMMON_TAB"] = "Relação geral";
+$MESS["INTRANET_USTAT_RATING_INVOLVE_TAB"] = "não envolvido";
+$MESS["INTRANET_USTAT_RATING_LOADING"] = "Carregando ...";
+$MESS["INTRANET_USTAT_WIDGET_LOADING"] = "Carregando...";
+$MESS["INTRANET_USTAT_WIDGET_TITLE"] = "Pulso da Empresa";
+?>

@@ -1,0 +1,6 @@
+<?php
+$MESS["INTRANET_USTAT_ONLINE_EMPTY"] = "ไม่มีข้อมูล";
+$MESS["INTRANET_USTAT_ONLINE_FINISHED_DAY"] = "ตอกบัตรออก";
+$MESS["INTRANET_USTAT_ONLINE_HINT"] = "พนักงานออนไลน์";
+$MESS["INTRANET_USTAT_ONLINE_STARTED_DAY"] = "ตอกบัตรเข้า";
+$MESS["INTRANET_USTAT_ONLINE_USERS"] = "พนักงานออนไลน์";

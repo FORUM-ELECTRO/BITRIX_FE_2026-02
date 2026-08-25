@@ -1,0 +1,7 @@
+<?
+$MESS["INTRANET_USTAT_RATING_COMMON_TAB"] = "การให้คะแนนทั่วไป";
+$MESS["INTRANET_USTAT_RATING_INVOLVE_TAB"] = "ไม่เกี่ยวข้อง";
+$MESS["INTRANET_USTAT_RATING_LOADING"] = "กำลังโหลด...";
+$MESS["INTRANET_USTAT_WIDGET_LOADING"] = "กำลังโหลด...";
+$MESS["INTRANET_USTAT_WIDGET_TITLE"] = "ชีพจรบริษัท";
+?>

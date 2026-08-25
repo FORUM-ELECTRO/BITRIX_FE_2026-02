@@ -1,0 +1,20 @@
+<?
+$MESS["INTRANET_USTAT_USER_ACTIVITY_COMPANY_TITLE"] = "公司<br>平均";
+$MESS["INTRANET_USTAT_USER_ACTIVITY_DEPT_TITLE"] = "部门<br>平均";
+$MESS["INTRANET_USTAT_USER_ACTIVITY_TITLE"] = "我的<br>活动率";
+$MESS["INTRANET_USTAT_USER_ACTIVITY_TITLE_OTHER"] = "活动<br>率";
+$MESS["INTRANET_USTAT_USER_GRAPH_COMPANY"] = "公司平均";
+$MESS["INTRANET_USTAT_USER_GRAPH_DEPT"] = "%DEPT% 部门平均";
+$MESS["INTRANET_USTAT_USER_GRAPH_ME"] = "我";
+$MESS["INTRANET_USTAT_USER_GRAPH_TITLE"] = "公司脉冲图";
+$MESS["INTRANET_USTAT_USER_HELP_ACTIVITY"] = "指定时间段内，您使用 Bitrix24 七大工具之一的总价值。";
+$MESS["INTRANET_USTAT_USER_HELP_ACTIVITY_COMPANY"] = "指定时间段内，整个公司使用 Bitrix24 七大工具之一的平均价值。<br><br><b>使用公司的平均价值来查看是否您要比公司平均水平更活跃。";
+$MESS["INTRANET_USTAT_USER_HELP_ACTIVITY_DEPT"] = "指定时间段内，您的部门使用 Bitrix24 七大工具之一的平均价值。<br><br><b>使用部门的平均价值来查看是否您要比其他人更活跃。";
+$MESS["INTRANET_USTAT_USER_HELP_GENERAL"] = "<b>公司脉冲图</b>显示了指定时间段内您在 Bitrix24 上的活动情况。";
+$MESS["INTRANET_USTAT_USER_HELP_RATING"] = "<b>活动评级</b>汇总排名列出了在指定时间段至少使用了一次 Bitrix24 的所有员工，您可以看到自己的位置。";
+$MESS["INTRANET_USTAT_USER_RATING_TITLE"] = "我的<br>评级";
+$MESS["INTRANET_USTAT_USER_RATING_TITLE_OTHER"] = "评级";
+$MESS["INTRANET_USTAT_USER_SECTION_ACTIVITY"] = "活动";
+$MESS["INTRANET_USTAT_USER_SECTION_MAX_ACTIVITY"] = "最大";
+$MESS["INTRANET_USTAT_USER_SECTION_TELL_ABOUT"] = "告诉";
+?>
