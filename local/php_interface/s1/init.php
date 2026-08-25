@@ -84,6 +84,12 @@ require_once(__DIR__ . '/override.php');
 // Переопределение Feed бизнес-процессов для доступа к добавлению комментария
 include_once(__DIR__ . '/init_scripts/event_handlers/forum_comments_feed.php');
 
+// Вызов попап окна для воронки "Тендеры" с возможность обновить дату процедуры
+//include_once(__DIR__ . '/init_scripts/event_handlers/on_after_crm_deal_update.php');
+
+// Подключаем JS-файл для попапа (если не подключено другим способом)
+// Важно: JS-файл должен быть подключен в нужном месте, иначе попап не будет работать
+
 // Кастомное поле "Индикатор риска (Сбер)" для CRM
 // require_once(__DIR__ . '/lib/RiskIndicator.php');
 

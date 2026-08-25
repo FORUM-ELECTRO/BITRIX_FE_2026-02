@@ -1,0 +1,11 @@
+<?
+
+define('DEBUG_FILE_NAME', 'debug.txt');
+define('TECH_USER_ID', '1668');
+define('TECH_SUPPORT_GROUP_ID', '541');
+define('WORKFLOW_FORUM_ID', '18');
+define('STATE_HISTORY_IBLOCK_ID', '197');
+define('FIELD_DEPENDENCY_IBLOCK_ID', '433');
+define('HIDE_PICK_ELEMENT_BUTTON_EXCLUSIONS_IBLOCK_ID', '452');
+
+?>
