@@ -50,6 +50,6 @@ else:
         
         <input type="submit" value="Удалить модуль">
     </form>
-    <?
+<?php
 endif;
 ?>
