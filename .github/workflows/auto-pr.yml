@@ -12,6 +12,7 @@ jobs:
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          repository: FORUM-ELECTRO/BITRIX_FE_2026-02
           branch: dev
           base: master
           title: "Авто PR: изменения из dev"
