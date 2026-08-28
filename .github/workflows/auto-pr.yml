@@ -8,19 +8,38 @@ jobs:
   create-pr:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Check if PR exists and create if not
+        uses: actions/github-script@v7
         with:
-          fetch-depth: 0
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = 'FORUM-ELECTRO';
+            const repo = 'BITRIX_FE_2026-02';
+            const head = 'dev';
+            const base = 'master';
 
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: dev
-          base: master
-          title: "Авто PR: изменения из dev"
-          body: |
-            Автоматически созданный PR.
-            Проверьте и подтвердите вливание.
-          labels: automated-pr
+            // Проверяем, есть ли уже открытый PR из dev в master
+            const { data: pulls } = await github.rest.pulls.list({
+              owner,
+              repo,
+              head: `${owner}:${head}`,
+              base,
+              state: 'open'
+            });
+
+            if (pulls.length > 0) {
+              console.log(`PR уже существует: ${pulls[0].html_url}`);
+              return;
+            }
+
+            // Если нет — создаём
+            const { data: pull } = await github.rest.pulls.create({
+              owner,
+              repo,
+              head,
+              base,
+              title: 'Авто PR: изменения из dev',
+              body: 'Автоматически созданный PR. Проверьте и подтвердите вливание.'
+            });
+
+            console.log(`PR создан: ${pull.html_url}`);
