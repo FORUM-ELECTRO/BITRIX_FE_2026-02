@@ -813,6 +813,16 @@ JS;
                 registerNative(header);
                 bindFallback(header);
 
+                // Bitrix registerItem вешает jsDD на li и потом перетаскивает их
+                // по b_user_option.menu_sort. Отключаем drag для всех li в разделе.
+                (function disableDragInside(innerUlLocal){
+                    if (!window.jsDD || typeof jsDD.unregisterObject !== 'function') return;
+                    if (!innerUlLocal) return;
+                    innerUlLocal.querySelectorAll('li.menu-item-block').forEach(function(li){
+                        try { jsDD.unregisterObject(li); } catch (e) {}
+                    });
+                })(innerUl); 
+
                 var innerUl = content.querySelector('ul.menu-item-group-more-ul');
                 if (!innerUl) continue;
 
