@@ -845,6 +845,7 @@ JS;
                         li.classList.add('fgz-moved');
                         li.setAttribute('data-fgz-moved', '1');
                         li.style.removeProperty('display');
+                        
                         if (it.title) {
                             var tx = li.querySelector('.menu-item-link-text');
                             if (tx) tx.textContent = it.title;
@@ -892,6 +893,19 @@ JS;
                         innerUl.appendChild(makeCustom(it));
                     }
                 }
+
+                // Пересортировка li внутри innerUl по itemsSorted
+                itemsSorted.forEach(function(it){
+                    var li = null;
+                    if (it.id) {
+                        li = innerUl.querySelector('li.menu-item-block[data-id="' + safeId(it.id) + '"]');
+                    }
+                    if (!li) {
+                        var cid = 'fgz_custom_' + safeId(it.link || it.title);
+                        li = innerUl.querySelector('li[data-id="' + cid + '"]');
+                    }
+                    if (li) innerUl.appendChild(li);
+                });
 
                 // Суммарный счётчик раздела на его заголовке
                 var counterSum = 0;
