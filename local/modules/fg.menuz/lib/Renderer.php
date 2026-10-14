@@ -30,11 +30,7 @@ final class Renderer
     }
 
     /**
-     * Формирует CSS, JSON-конфигурацию разделов и клиентский JS
-     * и добавляет их в head страницы.
-     *
-     * Админка и служебные запросы пропускаются. При fgz_collect=1
-     * вместо меню подключается коллектор штатных пунктов.
+     * Формирует CSS, JSON-конфигурацию и клиентский JS и добавляет их в head страницы.
      *
      * @return void
      */
@@ -44,6 +40,7 @@ final class Renderer
 
         if (!is_object($APPLICATION)) return;
         if (defined("ADMIN_SECTION") && ADMIN_SECTION === true) return;
+        if (!self::isEnabledForUser()) return;
         if ((string)($_GET["fgz_raw"] ?? "") === "1") return;
 
         if ((string)($_GET["fgz_collect"] ?? "") === "1") {
@@ -51,6 +48,17 @@ final class Renderer
             if (is_object($USER) && $USER->IsAdmin()) {
                 $APPLICATION->AddHeadString(
                     '<script data-fg-menuz="collect">' . self::collectJs() . '</script>',
+                    true
+                );
+            }
+            return;
+        }
+
+        if ((string)($_GET["fgz_collect_sitemap"] ?? "") === "1") {
+            global $USER;
+            if (is_object($USER) && $USER->IsAdmin()) {
+                $APPLICATION->AddHeadString(
+                    '<script data-fg-menuz="collect-sitemap">' . self::collectSitemapJs() . '</script>',
                     true
                 );
             }
@@ -82,16 +90,11 @@ final class Renderer
                 "native" => $isNative,
                 "title"  => (string)$s["title"],
                 "icon"   => (string)($s["icon"] ?? ""),
-                "items" => array_map(static function ($it) {
-                    return [
-                        "link"    => (string)($it["url"] ?? ""),
-                        "title"   => (string)($it["title"] ?? ""),
-                        "icon"    => (string)($it["icon"] ?? ""),
-                        "id"      => (string)($it["id"] ?? ""),
-                        "counter" => (string)($it["counter"] ?? ""),
-                        "sort"    => isset($it["sort"]) ? (int)$it["sort"] : null,
-                    ];
-                }, $s["items"]),
+                // Единый формат пункта: url -> link, id, sort, source
+                "items" => array_map(
+                    static fn(array $it) => Catalog::normalizeItem($it, "section"),
+                    $s["items"]
+                ),
             ];
         }
 
@@ -109,8 +112,65 @@ final class Renderer
         if (!is_array($rootOverrides)) $rootOverrides = [];
         $badges = Settings::get("badges", []);
         if (!is_array($badges)) $badges = [];
+
+        // Корневые пункты — вне разделов.
+        // Нормализуем к единому формату (url -> link) и гарантируем стабильный id,
+        // чтобы order, root_items и DOM на публичке использовали один ключ.
+        $rootItemsRaw = Settings::get("root_items", []);
+        if (!is_array($rootItemsRaw)) $rootItemsRaw = [];
+        $rootItems = [];
+        foreach ($rootItemsRaw as $ri) {
+            $rootItems[] = [
+                "title"   => (string)($ri["title"]   ?? ""),
+                "url"     => (string)($ri["url"]     ?? ""),
+                "icon"    => (string)($ri["icon"]    ?? ""),
+                "id"      => (string)($ri["id"]      ?? ""),
+                "counter" => (string)($ri["counter"] ?? ""),
+                "sort"    => isset($ri["sort"]) ? (int)$ri["sort"] : null,
+                "addUrl"  => (string)($ri["add_url"] ?? ""),
+            ];
+        }
+        $rootItems = array_map(static function (array $it): array {
+            $norm = Catalog::normalizeItem($it, "root");
+            $norm["id"] = Catalog::rootId($it);
+            return $norm;
+        }, $rootItems);
+
         global $USER;
         $userId = (is_object($USER) && $USER->IsAuthorized()) ? (int)$USER->GetID() : 0;
+        if (isset($_GET["fgz_p"])) {
+            echo "USER_ID=" . (is_object($USER) ? $USER->GetID() : "no user") . "\n";
+            echo "isAuth=" . (is_object($USER) && $USER->IsAuthorized() ? "Y" : "N") . "\n";
+            echo "userId=" . $userId . "\n";
+            $raw = \CUserOptions::GetOption("intranet", "left_menu_standard_items_S1", [], $userId);
+            echo "raw type=" . gettype($raw) . "\n";
+            echo "raw count=" . (is_array($raw) ? count($raw) : 0) . "\n";
+            print_r($raw);
+            exit;
+        }
+
+        // Личные ссылки пользователя (b_user_option.intranet.left_menu_standard_items_S1).
+        // CUserOptions::GetOption отдаёт уже десериализованный массив:
+        //   [ID => ["TEXT"=>..., "LINK"=>..., "ID"=>...]]  — личная ссылка (ID может быть строкой!)
+        //   ["menu_xxx" => "/url/"]                        — переопределение штатного, пропускаем
+        $selfItems = [];
+        if ($userId > 0) {
+            $selfRaw = \CUserOptions::GetOption("intranet", "left_menu_standard_items_S1", [], $userId);
+            if (is_array($selfRaw)) {
+                foreach ($selfRaw as $sid => $val) {
+                    $sid = (string)$sid;
+                    // штатные переопределения menu_* — пропускаем
+                    if (preg_match('/^menu_/i', $sid)) continue;
+                    // личная ссылка — только если значение это массив с непустым LINK
+                    if (!is_array($val)) continue;
+                    if (empty($val["LINK"])) continue;
+                    $sid = (string)($val["ID"] ?? $sid);
+                    if ($sid === "") continue;
+                    $selfItems[] = $sid;
+                }
+            }
+        }
+        $selfItems = array_values(array_unique($selfItems));
 
         $json = Json::encode(
             [
@@ -122,16 +182,20 @@ final class Renderer
                 "rootOverrides" => $rootOverrides,
                 "userId"     => $userId,
                 "badges"     => $badges,
+                "selfItems"  => $selfItems,
+                "rootItems"  => $rootItems,
             ],
             JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE
         );
         $json = str_replace("</", "<\\/", $json);
+
 
         // CSS для меню
         $css = '';
         $css .= '#menu-items-block .fgz-custom .ui-icon-set{background-color:currentColor!important;}';
         // Скрываем шестерёнку и drag-handle у ВСЕХ пунктов и разделов
         $css .= '#menu-items-block [data-role="item-edit-control"]{display:none!important;}';
+        $css .= '#menu-items-block #bx_left_menu_fgz_personal_parent [data-role="item-edit-control"]{display:inline-flex!important;}';
         $css .= '#menu-items-block .menu-favorites-draggable{display:none!important;}';
         $css .= '#menu-items-block .menu-fav-draggable-icon{display:none!important;}';
         $css .= '#menu-items-block .fgz-custom .ui-icon-set:hover,';
@@ -140,6 +204,9 @@ final class Renderer
         $css .= '#menu-items-block li.menu-item-group[data-collapse-mode="collapsed"] + li.menu-item-group-more{display:none!important;}';
         $css .= '#menu-items-block .fgz-section li.menu-item-block.fgz-moved .menu-item-icon{background-color:currentColor!important;}';
         $css .= '#menu-items-block .fgz-section li.menu-item-block.fgz-moved .menu-item-icon-box > span{background-color:currentColor!important;}';
+
+        // Скрываем шильдики при свёрнутом левом меню
+        $css .= '.root.menu-collapsed-mode #menu-items-block .ui-label{display:none!important;}';
 
         // Скрытые пункты — сразу через CSS
         $hidden = Settings::get("hidden", []);
@@ -160,10 +227,29 @@ final class Renderer
                 }
             }
         }
+        // Подсветка «Избранного» — лёгкий оранжевый фон
+        $css .= '#menu-items-block #bx_left_menu_fgz_personal{background-color:rgba(100,180,255,0.10);border-radius:6px;}';
+        $css .= '#menu-items-block #bx_left_menu_fgz_personal:hover{background-color:rgba(100,180,255,0.16);}';
+        $css .= '#menu-items-block #bx_left_menu_fgz_personal.menu-item-active{background-color:rgba(100,180,255,0.20);}';
+        // Анти-FOUC: меню скрыто, но CSS-анимация покажет его через 1.5с,
+        // даже если JS упадёт. JS снимает гард раньше — через .fgz-ready.
+        $css .= '#menu-items-block .menu-items-body-inner{visibility:hidden;animation:fgzPatReveal 0s linear 1500ms forwards;}';
+        $css .= '#menu-items-block.fgz-ready .menu-items-body-inner{visibility:visible;animation:none;}';
+        $css .= '@keyframes fgzPatReveal{to{visibility:visible;}}';
+        // Насыщенные цвета шильдиков (вместо мягких ui-label-*)
+        $css .= '#menu-items-block .ui-label.ui-label-success{background-color:#1cae6a!important;color:#fff!important;border-color:#1cae6a!important;}';
+        $css .= '#menu-items-block .ui-label.ui-label-success *{color:#fff!important;}';
+        $css .= '#menu-items-block .ui-label.ui-label-warning{background-color:#e8a643!important;color:#fff!important;border-color:#e8a643!important;}';
+        $css .= '#menu-items-block .ui-label.ui-label-warning *{color:#fff!important;}';
+        $css .= '#menu-items-block .ui-label.ui-label-danger{background-color:#e7433a!important;color:#fff!important;border-color:#e7433a!important;}';
+        $css .= '#menu-items-block .ui-label.ui-label-danger *{color:#fff!important;}';
+        $css .= '#menu-items-block .ui-label.ui-label-primary{background-color:#2fc7f7!important;color:#fff!important;border-color:#2fc7f7!important;}';
+        $css .= '#menu-items-block .ui-label.ui-label-primary *{color:#fff!important;}';
+        
+        
 
-        // Анти-FOUC: пока не построены разделы — меню скрыто
-        $css .= '#menu-items-block:not(.fgz-ready) .menu-items-body-inner{visibility:hidden;}';
-        $css .= '#menu-items-block.fgz-ready .menu-items-body-inner{visibility:visible;}';
+        // Скрываем штатные пункты, пока меню не готово — но НЕ весь .menu-items-body-inner
+        $css .= '#menu-items-block:not(.fgz-ready) .menu-items-body-inner ul.menu-items > li.menu-item-block:not(.fgz-section):not(.fgz-custom):not(.fgz-moved):not([data-fgz-id]):not([data-fgz-root]):not(.main-page):not(.menu-live-feed){display:none!important;}';
 
         if ($hideNative) {
             // Скрываем все штатные пункты верхнего уровня
@@ -304,10 +390,69 @@ JS;
     }
 
     /**
-     * Клиентский JS, перестраивающий меню.
+     * JS-коллектор карты сайта: собирает ссылки из main и шлёт на бэклог.
      *
-     * Создаёт разделы и пункты, переносит штатные пункты в разделы,
-     * скрывает скрытые пункты и применяет общий порядок.
+     * @return string
+     */
+    private static function collectSitemapJs(): string
+    {
+        return <<<'JS'
+(function () {
+    function send(payload) {
+        var sessid = (window.BX && BX.bitrix_sessid) ? BX.bitrix_sessid() : '';
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/bitrix/admin/fg_menuz_collect_sitemap.php?sessid=' + encodeURIComponent(sessid), true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.onload = function () {
+            try { localStorage.setItem('fgz_collect_sitemap_done', Date.now().toString()); } catch (e) {}
+            window.close();
+        };
+        xhr.onerror = function () {
+            document.body.innerHTML = '<p>Ошибка отправки. Закройте вкладку.</p>';
+        };
+        xhr.send(JSON.stringify(payload));
+    }
+
+    function run(tries) {
+        var root = document.querySelector('main');
+        if (!root) {
+            if (tries > 100) return;
+            return setTimeout(function () { run(tries + 1); }, 100);
+        }
+        setTimeout(function () {
+            var seen = {};
+            var items = [];
+            Array.from(root.querySelectorAll('a[href]')).forEach(function (a) {
+                var h = (a.getAttribute('href') || '').trim();
+                var t = (a.textContent || '').trim();
+                if (!h || !t) return;
+                if (h.charAt(0) === '#') return;
+                if (h.indexOf('javascript:') === 0) return;
+                if (h.indexOf('/bitrix/') === 0) return;
+                if (h.indexOf('/auth') === 0) return;
+                if (h.indexOf('/login') === 0) return;
+                if (h.indexOf('/search') === 0) return;
+                if (h.indexOf('/sitemap') === 0) return;
+                // обрезаем query и якоря — они нам не нужны
+                var qPos = h.indexOf('?');
+                if (qPos !== -1) h = h.slice(0, qPos);
+                var hPos = h.indexOf('#');
+                if (hPos !== -1) h = h.slice(0, hPos);
+                if (h === "") return;
+                if (seen[h]) return;
+                seen[h] = 1;
+                items.push({ link: h, title: t });
+            });
+            send({ items: items });
+        }, 500);
+    }
+    run(0);
+})();
+JS;
+    }
+
+    /**
+     * Клиентский JS, перестраивающий меню.
      *
      * @return string
      */
@@ -317,6 +462,7 @@ JS;
 (function () {
     if (window.__fgzClient) return;
     window.__fgzClient = 1;
+    window.__fgzT0 = performance.now();
 
     var node = document.querySelector('script[data-fg-menuz="data"]');
     if (!node) return;
@@ -331,6 +477,8 @@ JS;
     var ROOT_OVERRIDES  = (CFG.rootOverrides && typeof CFG.rootOverrides === 'object') ? CFG.rootOverrides : {};
     var USER_ID         = CFG.userId || 0;
     var BADGES          = (CFG.badges && typeof CFG.badges === 'object') ? CFG.badges : {};
+    var SELF_ITEMS      = Array.isArray(CFG.selfItems) ? CFG.selfItems : [];
+    var ROOT_ITEMS      = Array.isArray(CFG.rootItems) ? CFG.rootItems : [];
 
     // Разовая очистка старых ключей без userId (fgz-mode-XXX)
     (function cleanupOldModeKeys() {
@@ -346,6 +494,16 @@ JS;
         } catch (e) {}
     })();
 
+    // Неавторизованный заход (страница логина/логаута) — сбрасываем состояние
+    // свёрнутости, чтобы при следующей авторизации все разделы были свёрнуты.
+    if (!USER_ID) {
+        try {
+            Object.keys(sessionStorage).forEach(function(k){
+                if (k.indexOf('fgz-mode-') === 0) sessionStorage.removeItem(k);
+            });
+        } catch (e) {}
+    }
+
     function block() { return document.getElementById('menu-items-block'); }
     function menuUl() {
         var b = block();
@@ -356,17 +514,101 @@ JS;
     }
     function safeId(v) { return ('' + v).replace(/[^a-zA-Z0-9_\-]/g, ''); }
 
-    // // Раз в сессию браузера (при новом заходе) сбрасываем localStorage разделов
-    // (function resetModesOnce() {
-    //     try {
-    //         if (!sessionStorage.getItem('fgz-session-init')) {
-    //             sessionStorage.setItem('fgz-session-init', '1');
-    //             Object.keys(localStorage).forEach(function(k){
-    //                 if (k.indexOf('fgz-mode-') === 0) localStorage.removeItem(k);
-    //             });
-    //         }
-    //     } catch (e) {}
-    // })();
+    function addPlus(li, addUrl) {
+        if (!li || !addUrl) return;
+        var old = li.querySelector('.menu-item-plus');
+        if (old) {
+            if (old.getAttribute('href') !== addUrl) old.setAttribute('href', addUrl);
+            return;
+        }
+        var plus = document.createElement('a');
+        plus.className = 'menu-item-plus';
+        plus.href = addUrl;
+        plus.setAttribute('tabindex', '-1');
+        plus.setAttribute('aria-hidden', 'true');
+        plus.setAttribute('aria-label', 'Создать');
+        var ic = document.createElement('span');
+        ic.className = 'menu-item-plus-icon';
+        ic.setAttribute('aria-hidden', 'true');
+        plus.appendChild(ic);
+
+        plus.addEventListener('click', function(e){
+            e.preventDefault();
+            e.stopPropagation();
+
+            // js: — выполнить код прямо здесь
+            if (addUrl.indexOf('js:') === 0) {
+                var code = addUrl.slice(3);
+                try { (new Function(code))(); }
+                catch (ex) { if (window.console) console.warn('fgz addPlus js error:', ex); }
+                return;
+            }
+
+            // sp:URL|js:КОД — открыть URL в SidePanel и выполнить КОД после загрузки
+            if (addUrl.indexOf('sp:') === 0) {
+                var rest = addUrl.slice(3);
+                var sep = rest.indexOf('|js:');
+                var url = sep === -1 ? rest : rest.slice(0, sep);
+                var afterCode = sep === -1 ? '' : rest.slice(sep + 4);
+                if (window.BX && BX.SidePanel && BX.SidePanel.Instance) {
+                    BX.SidePanel.Instance.open(url, {
+                        cacheable: false,
+                        allowChangeHistory: true,
+                        width: 1000,
+                        events: {
+                            onLoad: function(event){
+                                if (!afterCode) return;
+                                var slider = event.getSlider ? event.getSlider() : null;
+                                var frame = slider && slider.getFrame ? slider.getFrame() : null;
+                                var win = frame && frame.contentWindow ? frame.contentWindow : null;
+                                if (!win) return;
+                                try { (new Function('window', afterCode))(win); }
+                                catch (ex) { if (window.console) console.warn('fgz sp js:', ex); }
+                            }
+                        }
+                    });
+                    return;
+                }
+                window.location.href = url;
+                return;
+            }
+
+            // обычный URL — SidePanel, если он есть
+            if (window.BX && BX.SidePanel && BX.SidePanel.Instance) {
+                BX.SidePanel.Instance.open(addUrl, {
+                    cacheable: false,
+                    allowChangeHistory: true,
+                    width: 1000
+                });
+                return;
+            }
+            window.location.href = addUrl;
+        }, true);
+
+        var link = li.querySelector('.menu-item-link');
+        if (link) li.insertBefore(plus, link);
+        else li.appendChild(plus);
+    }
+
+    // Единый ключ пункта в DOM: приоритет у it.id (тот же, что в order,
+    // root_items и разделах). Без id — фолбэк по ссылке/названию.
+    function itemDataId(it) {
+        return it.id ? safeId(it.id) : ('fgz_custom_' + safeId(it.link || it.title));
+    }
+
+    // Раз в сессию браузера (при новом заходе) чистим старые ключи localStorage.
+    // Само состояние свёрнутости хранится в sessionStorage — см. savedMode(),
+    // поэтому на новой вкладке/сессии все разделы всегда свёрнуты.
+    (function resetModesOnce() {
+        try {
+            if (!sessionStorage.getItem('fgz-session-init')) {
+                sessionStorage.setItem('fgz-session-init', '1');
+                Object.keys(localStorage).forEach(function(k){
+                    if (k.indexOf('fgz-mode-') === 0) localStorage.removeItem(k);
+                });
+            }
+        } catch (e) {}
+    })();
 
     function modeKey(id) {
         return 'fgz-mode-' + USER_ID + '-' + id;
@@ -374,7 +616,7 @@ JS;
 
     function savedMode(id) {
         try {
-            var stored = localStorage.getItem(modeKey(id));
+            var stored = sessionStorage.getItem(modeKey(id));
             if (stored === 'collapsed') return 'collapsed';
             if (stored === 'expanded') return 'expanded';
             return 'collapsed';
@@ -539,7 +781,7 @@ JS;
             if (exp !== 'true' && exp !== 'false') return;
             var mode = exp === 'true' ? 'expanded' : 'collapsed';
             header.setAttribute('data-collapse-mode', mode);
-            try { localStorage.setItem(modeKey(id), mode); } catch (e) {}
+            try { sessionStorage.setItem(modeKey(id), mode); } catch (e) {}
         }
 
         new MutationObserver(sync).observe(btn, { attributes: true, attributeFilter: ['aria-expanded'] });
@@ -579,7 +821,7 @@ JS;
             e.stopPropagation();
             var mode = header.getAttribute('data-collapse-mode') === 'collapsed' ? 'expanded' : 'collapsed';
             header.setAttribute('data-collapse-mode', mode);
-            try { localStorage.setItem(modeKey(header.getAttribute('data-id')), mode); } catch (ex) {}
+            try { sessionStorage.setItem(modeKey(header.getAttribute('data-id')), mode); } catch (ex) {}
         }, true);
     }
 
@@ -587,7 +829,7 @@ JS;
         var li = document.createElement('li');
         li.className = 'menu-item-block fgz-custom';
         li.setAttribute('data-status', 'show');
-        li.setAttribute('data-id', 'fgz_custom_' + safeId(it.link || it.title));
+        li.setAttribute('data-id', itemDataId(it));
         li.setAttribute('data-role', 'item');
         li.setAttribute('data-type', 'custom');
         li.setAttribute('data-storage', '');
@@ -687,7 +929,11 @@ JS;
     function apply() {
         var ul = menuUl();
         if (!ul) return;
+        // В режиме редактирования меню — не перестраиваем
+        var b = block();
+        if (b && b.classList.contains('menu-items-edit-mode')) return;
         if (obs) obs.disconnect();
+        if (window.console) console.time('apply');
         try {
             // Скрываем пункты из списка hidden
             // Ищем по всему #menu-items-block — включая li, уже перенесённые в разделы
@@ -789,10 +1035,13 @@ JS;
                                 nli.setAttribute('data-counter-id', nit.counter);
                             }
                             nativeUl.appendChild(nli);
+                            addPlus(nli, nit.addUrl || '');
                         } else {
-                            var ncid = 'fgz_custom_' + safeId(nit.link || nit.title);
-                            if (!nativeUl.querySelector('li[data-id="' + ncid + '"]')) {
-                                nativeUl.appendChild(makeCustom(nit));
+                            var ncid = itemDataId(nit);
+                            if (!nativeUl.querySelector('li[data-id="' + safeId(ncid) + '"]')) {
+                                var _nli1 = makeCustom(nit);
+                                addPlus(_nli1, nit.addUrl || '');
+                                nativeUl.appendChild(_nli1);
                             }
                         }
                     }
@@ -813,6 +1062,9 @@ JS;
                 registerNative(header);
                 bindFallback(header);
 
+                var innerUl = content.querySelector('ul.menu-item-group-more-ul');
+                if (!innerUl) continue;
+
                 // Bitrix registerItem вешает jsDD на li и потом перетаскивает их
                 // по b_user_option.menu_sort. Отключаем drag для всех li в разделе.
                 (function disableDragInside(innerUlLocal){
@@ -821,10 +1073,7 @@ JS;
                     innerUlLocal.querySelectorAll('li.menu-item-block').forEach(function(li){
                         try { jsDD.unregisterObject(li); } catch (e) {}
                     });
-                })(innerUl); 
-
-                var innerUl = content.querySelector('ul.menu-item-group-more-ul');
-                if (!innerUl) continue;
+                })(innerUl);
 
                 // Сортируем items по sort (null — в конце)
                 var itemsSorted = sec.items.slice().sort(function(a, b){
@@ -887,10 +1136,13 @@ JS;
                         }
 
                         innerUl.appendChild(li);
+                        addPlus(li, it.addUrl || '');
                     } else {
-                        var cid = 'fgz_custom_' + safeId(it.link || it.title);
-                        if (innerUl.querySelector('li[data-id="' + cid + '"]')) continue;
-                        innerUl.appendChild(makeCustom(it));
+                        var cid = itemDataId(it);
+                        if (innerUl.querySelector('li[data-id="' + safeId(cid) + '"]')) continue;
+                        var _newLi2 = makeCustom(it);
+                        addPlus(_newLi2, it.addUrl || '');
+                        innerUl.appendChild(_newLi2);
                     }
                 }
 
@@ -901,10 +1153,13 @@ JS;
                         li = innerUl.querySelector('li.menu-item-block[data-id="' + safeId(it.id) + '"]');
                     }
                     if (!li) {
-                        var cid = 'fgz_custom_' + safeId(it.link || it.title);
-                        li = innerUl.querySelector('li[data-id="' + cid + '"]');
+                        var cid = itemDataId(it);
+                        li = innerUl.querySelector('li[data-id="' + safeId(cid) + '"]');
                     }
-                    if (li) innerUl.appendChild(li);
+                    if (li) {
+                        innerUl.appendChild(li);
+                        addPlus(li, it.addUrl || '');
+                    }
                 });
 
                 // Суммарный счётчик раздела на его заголовке
@@ -947,20 +1202,24 @@ JS;
                 }
             }
 
-            // // Сворачиваем native-разделы Bitrix (Совместная работа, Приложения)
-            // (function collapseNativeGroups(){
-            //     var b = block();
-            //     if (!b) return;
-            //     b.querySelectorAll('li.menu-item-group:not(.fgz-section)').forEach(function(li){
-            //         if (li.getAttribute('data-collapse-mode') !== 'collapsed') {
-            //             li.setAttribute('data-collapse-mode', 'collapsed');
-            //         }
-            //         var btn = li.querySelector('.menu-item-link');
-            //         if (btn && btn.getAttribute('aria-expanded') !== 'false') {
-            //             btn.setAttribute('aria-expanded', 'false');
-            //         }
-            //     });
-            // })();
+            // Сворачиваем штатные группы Bitrix (Совместная работа, Приложения)
+            // по состоянию сессии: новая вкладка/сессия — всё свёрнуто,
+            // переключение внутри сессии сохраняется в sessionStorage.
+            (function applyNativeGroupModes(){
+                var b = block();
+                if (!b) return;
+                b.querySelectorAll('li.menu-item-group:not(.fgz-section)').forEach(function(li){
+                    var id = li.getAttribute('data-id');
+                    if (!id) return;
+                    var mode = savedMode(id);
+                    li.setAttribute('data-collapse-mode', mode);
+                    var btn = li.querySelector('.menu-item-link');
+                    if (btn) {
+                        btn.setAttribute('aria-expanded', mode === 'collapsed' ? 'false' : 'true');
+                    }
+                    watchCollapse(li);
+                });
+            })();
 
             // Отключаем drag&drop у всех пунктов меню
             (function disableDrag(){
@@ -1013,6 +1272,45 @@ JS;
                     }
                 });
             })();
+
+            // === Корневые пункты вне разделов ===
+            // Создаём недостающие li и обновляем существующие. Позицию задаёт
+            // блок ORDER ниже — здесь li не переставляем, чтобы не ломать
+            // уже применённую сортировку и не плодить дубли на каждом apply().
+            if (ROOT_ITEMS.length > 0) {
+                try {
+                    ROOT_ITEMS.forEach(function(it){
+                        var cid = itemDataId(it);
+                        var li = ul.querySelector('li.menu-item-block[data-id="' + safeId(cid) + '"]');
+                        if (li) {
+                            li.classList.add('fgz-root-item');
+                            li.setAttribute('data-fgz-root', '1');
+                            li.style.removeProperty('display');
+                            if (it.title) {
+                                var tx = li.querySelector('.menu-item-link-text');
+                                if (tx) tx.textContent = it.title;
+                            }
+                            if (it.icon) {
+                                var ic = li.querySelector('.menu-item-icon-box > span') || li.querySelector('.menu-item-icon');
+                                if (ic) applyIcon(ic, it.icon, it.title);
+                            }
+                            // Возвращаем в корень только если li не лежит в корне
+                            // и не находится внутри раздела (menu-item-group-more).
+                            // Позицию в корне задаёт ORDER — здесь не переставляем.
+                            if (li.parentNode !== ul && !li.closest('.menu-item-group-more')) {
+                                ul.appendChild(li);
+                            }
+                            return;
+                        }
+                        var newLi = makeCustom(it);
+                        newLi.classList.add('fgz-root-item');
+                        newLi.setAttribute('data-fgz-root', '1');
+                        ul.appendChild(newLi);
+                    });
+                } catch (eRoot) {
+                    if (window.console) console.warn('fgz root items:', eRoot);
+                }
+            }
 
             // Применяем общий порядок: разделы и корневые пункты вперемешку
             if (ORDER.length) {
@@ -1080,10 +1378,124 @@ JS;
             }
 
             hideNative();
+
+            // === Раздел «Избранное»: личные ссылки пользователя ===
+            if (SELF_ITEMS.length > 0) {
+                try {
+                    var personalHeader = document.getElementById('bx_left_menu_fgz_personal');
+                    var personalContent = document.getElementById('bx_left_menu_fgz_personal_parent');
+                    if (!personalHeader || !personalContent) {
+                        var personalShell = buildShell({
+                            id:    'fgz_personal',
+                            title: 'Избранное',
+                            icon:  'pin-1',
+                        });
+                        ul.appendChild(personalShell.header);
+                        ul.appendChild(personalShell.content);
+                        personalHeader = personalShell.header;
+                        personalContent = personalShell.content;
+                    }
+                    registerNative(personalHeader);
+                    bindFallback(personalHeader);
+
+                    var personalUl = personalContent.querySelector('ul.menu-item-group-more-ul');
+                    if (personalUl) {
+                        SELF_ITEMS.forEach(function (sid) {
+                            var li = ul.querySelector('li.menu-item-block[data-id="' + safeId(sid) + '"]');
+                            if (!li) return;
+                            if (li.closest('.fgz-section') === personalHeader) return;
+                            li.classList.add('fgz-moved');
+                            li.setAttribute('data-fgz-moved', '1');
+                            li.style.removeProperty('display');
+                            personalUl.appendChild(li);
+                        });
+
+                        // Динамика: переносим новые личные ссылки, которых нет в SELF_ITEMS
+                        var allLis = ul.querySelectorAll(':scope > li.menu-item-block');
+                        for (var i = 0; i < allLis.length; i++) {
+                            var li2 = allLis[i];
+                            if (!li2.dataset.id) continue;
+                            var id2 = li2.dataset.id;
+
+                            if (li2.classList.contains('fgz-section')) continue;
+                            if (li2.classList.contains('fgz-custom')) continue;
+                            if (li2.classList.contains('fgz-moved')) continue;
+                            if (id2 === 'main_page') continue;
+                            if (id2 === 'fgz_personal') continue;
+                            if (id2.indexOf('fgz_') === 0) continue;
+                            if (id2.indexOf('menu_') === 0) continue;
+
+                            var isSection = false;
+                            for (var s2 = 0; s2 < SECTIONS.length; s2++) {
+                                var sid2 = SECTIONS[s2].native
+                                    ? String(SECTIONS[s2].id)
+                                    : 'fgz_' + SECTIONS[s2].id;
+                                if (id2 === sid2) { isSection = true; break; }
+                            }
+                            if (isSection) continue;
+
+                            li2.classList.add('fgz-moved');
+                            li2.setAttribute('data-fgz-moved', '1');
+                            li2.style.removeProperty('display');
+                            personalUl.appendChild(li2);
+                        }
+                    }
+
+                    // Стабильная сортировка «Избранного»:
+                    // 1) по sort из ORDER (если есть),
+                    // 2) иначе по индексу в SELF_ITEMS (стабильно),
+                    // 3) иначе в конец.
+                    (function sortPersonal(){
+                        var orderMap = {};
+                        ORDER.forEach(function(o){
+                            if (!o || !o.id) return;
+                            orderMap[(o.type || '') + ':' + String(o.id)] = (o.sort != null ? o.sort : 9999);
+                        });
+
+                        var selfIndex = {};
+                        SELF_ITEMS.forEach(function(sid, i){ selfIndex[String(sid)] = i; });
+
+                        var kids = Array.from(personalUl.children);
+                        kids.forEach(function(li, idx){ li.__fgzIdx = idx; });
+
+                        kids.sort(function(a, b){
+                            var idA = a.getAttribute('data-fgz-key') || a.getAttribute('data-id') || '';
+                            var idB = b.getAttribute('data-fgz-key') || b.getAttribute('data-id') || '';
+
+                            var sA = orderMap['root:' + idA] != null ? orderMap['root:' + idA]
+                                   : (orderMap['section:' + idA] != null ? orderMap['section:' + idA] : null);
+                            var sB = orderMap['root:' + idB] != null ? orderMap['root:' + idB]
+                                   : (orderMap['section:' + idB] != null ? orderMap['section:' + idB] : null);
+
+                            if (sA != null && sB != null) return sA - sB;
+                            if (sA != null) return -1;
+                            if (sB != null) return 1;
+
+                            var iA = selfIndex[idA] != null ? selfIndex[idA] : 999999;
+                            var iB = selfIndex[idB] != null ? selfIndex[idB] : 999999;
+                            if (iA !== iB) return iA - iB;
+
+                            return (a.__fgzIdx || 0) - (b.__fgzIdx || 0);
+                        });
+
+                        kids.forEach(function(li){
+                            delete li.__fgzIdx;
+                            personalUl.appendChild(li);
+                        });
+                    })();
+
+                    // «Избранное» всегда в самом низу
+                    ul.appendChild(personalHeader);
+                    ul.appendChild(personalContent);
+                } catch (ePersonal) {
+                    if (window.console) console.warn('fgz personal:', ePersonal);
+                }
+            }
         } finally {
             var b = block();
             if (b) b.classList.add('fgz-ready');
             connect();
+            if (window.console) console.timeEnd('apply');
         }
     }
 
@@ -1094,24 +1506,33 @@ JS;
         obs.observe(b, { childList: true, subtree: true });
     }
 
+    var lastApply = 0;
     function schedule() {
         if (pending) return;
+        if (window.__fgzApplying) return;
+        var now = Date.now();
+        if (now - lastApply < 500) return;
         pending = true;
-        setTimeout(function () { pending = false; apply(); }, 150);
+        setTimeout(function () {
+            pending = false;
+            if (window.__fgzApplying) return;
+            var now2 = Date.now();
+            if (now2 - lastApply < 500) return;
+            lastApply = now2;
+            apply();
+        }, 300);
     }
 
     function start() {
         apply();
-        setTimeout(apply, 500);
-        setTimeout(apply, 1500);
     }
 
     var tries = 0;
     (function wait() {
         var ul = menuUl();
         if (!ul) {
-            if (++tries > 150) return;
-            return setTimeout(wait, 100);
+            if (++tries > 300) return;
+            return setTimeout(wait, 10);
         }
         if (window.BX && BX.ready) BX.ready(start); else start();
     })();
@@ -1140,5 +1561,53 @@ JS;
     });
 })();
 JS;
+    }
+
+    /**
+     * Проверяет, включён ли модуль для текущего пользователя.
+     *
+     * Видимость меню определяется правами модуля (вкладка «Доступ»):
+     * D — не показывать, R/W — показывать. Запрет (D) имеет приоритет:
+     * если хотя бы одна группа пользователя имеет «Доступ закрыт»,
+     * меню не показывается, даже если в другой группе есть R/W.
+     *
+     * @return bool
+     */
+    private static function isEnabledForUser(): bool
+    {
+        global $USER;
+        if (!is_object($USER)) return false;
+
+        $userId = (int)$USER->GetID();
+        if ($userId <= 0) return false;
+
+        // Администратор всегда видит меню
+        if ($USER->IsAdmin()) return true;
+
+        // Права групп из b_option: fg.menuz.group_rights = [gid => "D|R|W"]
+        $rights = Settings::get("group_rights", []);
+        if (!is_array($rights)) $rights = [];
+
+        $userGroups = $USER->GetUserGroupArray();
+        if (!is_array($userGroups)) $userGroups = [];
+
+        $right = "";
+        foreach ($userGroups as $gid) {
+            $gid = (int)$gid;
+            if (!isset($rights[$gid]) || $rights[$gid] === "") continue;
+            $gRight = (string)$rights[$gid];
+            // Запрет имеет приоритет
+            if ($gRight === "D") return false;
+            if ($right === "" || $gRight > $right) {
+                $right = $gRight;
+            }
+        }
+
+        // Ни одна группа не имеет явного права — берём значение по умолчанию
+        if ($right === "") {
+            $right = (string)Settings::get("group_default_right", "R");
+        }
+
+        return $right >= "R";
     }
 }

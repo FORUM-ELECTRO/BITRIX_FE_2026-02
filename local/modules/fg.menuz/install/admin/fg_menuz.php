@@ -30,8 +30,10 @@ use FG\Menuz\Settings;
 
 global $APPLICATION, $USER;
 
-if (!$USER->IsAdmin()) {
-    $APPLICATION->AuthForm("Доступ запрещён");
+// Доступ по правам модуля (вкладка «Доступ» в настройках модуля):
+// R — просмотр, W — редактирование. Админы всегда имеют полный доступ.
+if ($APPLICATION->GetGroupRight("fg.menuz") < "R") {
+    $APPLICATION->AuthForm(Loc::getMessage("FG_MENUZ_ACCESS_DENIED"));
 }
 
 Loader::includeModule("fg.menuz");
@@ -493,8 +495,12 @@ $ICONS = [
     'trend-down'           => 'Тренд вниз',
 ];
 
-// Сохранение формы
-if ($_SERVER["REQUEST_METHOD"] === "POST" && check_bitrix_sessid()) {
+// Сохранение формы (только с правом на редактирование)
+if (
+    $_SERVER["REQUEST_METHOD"] === "POST"
+    && check_bitrix_sessid()
+    && $APPLICATION->GetGroupRight("fg.menuz") >= "W"
+) {
     Settings::setFlag("enabled", ($_POST["enabled"] ?? "") === "Y");
     Settings::setFlag("hide_native", ($_POST["hide_native"] ?? "") === "Y");
     Settings::setFlag("hide_native_groups", ($_POST["hide_native_groups"] ?? "") === "Y");
@@ -511,6 +517,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && check_bitrix_sessid()) {
     $tGrp   = (array)($_POST["sec_item_group"] ?? []);
     $tCnt   = (array)($_POST["sec_item_counter"] ?? []);
     $tSort  = (array)($_POST["sec_item_sort"] ?? []);
+    $tAddUrl = (array)($_POST["sec_item_add_url"] ?? []);
     $dels   = (array)($_POST["sec_delete"] ?? []);
 
     foreach ($titles as $i => $title) {
@@ -530,6 +537,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && check_bitrix_sessid()) {
         $g2 = (array)($tGrp[$i] ?? []);
         $n2 = (array)($tCnt[$i] ?? []);
         $s2 = (array)($tSort[$i] ?? []);
+        $a2 = (array)($tAddUrl[$i] ?? []);
         foreach ($t2 as $j => $t) {
             $t  = trim((string)$t);
             $u  = trim((string)($u2[$j] ?? ""));
@@ -548,6 +556,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && check_bitrix_sessid()) {
                 "group"   => mb_substr(preg_replace('/[^a-zA-Z0-9_\-]/', '', $gr), 0, 100),
                 "counter" => mb_substr(preg_replace('/[^a-zA-Z0-9_\-]/', '', $cn), 0, 100),
                 "sort"    => $sortVal,
+                "add_url" => mb_substr(trim((string)($a2[$j] ?? "")), 0, 500),
             ];
         }
         $isNative = !empty($natives[$i]);
@@ -617,6 +626,59 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && check_bitrix_sessid()) {
     }
     Settings::set("hidden", array_values(array_unique($hidden)));
 
+    // Корневые пункты (вне разделов)
+    $rootItems = [];
+    $rTitles = (array)($_POST["root_item_title"] ?? []);
+    $rUrls   = (array)($_POST["root_item_url"] ?? []);
+    $rIcons  = (array)($_POST["root_item_icon"] ?? []);
+    $rIds    = (array)($_POST["root_item_id"] ?? []);
+    $rCnt    = (array)($_POST["root_item_counter"] ?? []);
+    $rSort   = (array)($_POST["root_item_sort"] ?? []);
+    $rAddUrl = (array)($_POST["root_item_add_url"] ?? []);
+    $rDel    = (array)($_POST["root_item_delete"] ?? []);
+    foreach ($rTitles as $i => $t) {
+        $t = trim((string)$t);
+        if ($t === "") continue;
+        if (!empty($rDel[$i])) continue;
+        $u = trim((string)($rUrls[$i] ?? ""));
+        if ($u === "") continue;
+        $ic = trim((string)($rIcons[$i] ?? ""));
+        $id = preg_replace('/[^a-zA-Z0-9_\-]/', '', trim((string)($rIds[$i] ?? "")));
+        // Стабильный id: если не задан — генерируем по URL, чтобы админка,
+        // order, root_items и DOM на публичке использовали один ключ.
+        if ($id === "") {
+            $id = "fgz_root_" . substr(md5($u), 0, 12);
+        }
+        $cn = trim((string)($rCnt[$i] ?? ""));
+        $st = $rSort[$i] ?? "";
+        $st = ($st === "" || $st === null) ? null : (int)$st;
+        $rootItems[] = [
+            "title"   => mb_substr($t, 0, 200),
+            "url"     => mb_substr($u, 0, 500),
+            "icon"    => mb_substr($ic, 0, 5000),
+            "id"      => $id,
+            "counter" => preg_replace('/[^a-zA-Z0-9_\-]/', '', $cn),
+            "sort"    => $st,
+            "add_url" => mb_substr(trim((string)($rAddUrl[$i] ?? "")), 0, 500),
+        ];
+    }
+    Settings::set("root_items", $rootItems);
+
+    // Права групп (b_option fg.menuz.group_rights)
+    $groupRights = [];
+    $gr = (array)($_POST["group_right"] ?? []);
+    $defaultRight = (string)($_POST["group_default_right"] ?? "R");
+    if (!in_array($defaultRight, ["D","R","W"], true)) $defaultRight = "R";
+    foreach ($gr as $gid => $r) {
+        $gid = (int)$gid;
+        $r = (string)$r;
+        if ($gid <= 0) continue;
+        if (!in_array($r, ["D","R","W"], true)) $r = "";
+        $groupRights[$gid] = $r;
+    }
+    Settings::set("group_rights", $groupRights);
+    Settings::set("group_default_right", $defaultRight);
+
     $saved = true;
 }
 
@@ -632,7 +694,7 @@ foreach ($sections as $s) {
     if (!empty($s["native"])) $existingNative[(string)$s["id"]] = true;
 }
 $catalogGroups = \FG\Menuz\Catalog::groups();
-$catalogItems  = \FG\Menuz\Catalog::items();
+$catalogItems  = \FG\Menuz\Catalog::itemsNative();
 foreach ($catalogGroups as $g) {
     if (isset($existingNative[$g["id"]])) continue;
     $gItems = [];
@@ -659,40 +721,6 @@ if (!$sections) {
     $sections = [[ "id" => 0, "title" => "", "items" => [] ]];
 }
 
-// Добавляем штатные группы, которых ещё нет в sections, чтобы они сразу были в форме
-$existingNative = [];
-foreach ($sections as $s) {
-    if (!empty($s["native"])) $existingNative[(string)$s["id"]] = true;
-}
-$groups = \FG\Menuz\Catalog::groups();
-$items  = \FG\Menuz\Catalog::items();
-foreach ($groups as $g) {
-    if (isset($existingNative[$g["id"]])) continue;
-    // Собираем пункты этой группы из каталога — чтобы при сохранении они не потерялись
-    $gItems = [];
-    foreach ($items as $it) {
-        if (($it["group"] ?? "") !== $g["id"]) continue;
-        $gItems[] = [
-            "id"      => $it["id"],
-            "title"   => $it["title"],
-            "url"     => $it["link"],
-            "icon"    => $it["icon"] ?? "",
-            "counter" => $it["counter"] ?? "",
-            "group"   => $g["id"],
-        ];
-    }
-    $sections[] = [
-        "id"     => $g["id"],
-        "native" => true,
-        "title"  => $g["title"],
-        "icon"   => "",
-        "items"  => $gItems,
-    ];
-}
-if (!$sections) {
-    $sections = [[ "id" => 0, "title" => "", "items" => [] ]];
-}
-
 require($_SERVER["DOCUMENT_ROOT"] . "/bitrix/modules/main/include/prolog_admin_after.php");
 ?>
 
@@ -713,6 +741,7 @@ require($_SERVER["DOCUMENT_ROOT"] . "/bitrix/modules/main/include/prolog_admin_a
 .fgz-row input[type=text] { padding:6px 8px; font-size:13px; }
 .fgz-row .fgz-name { width:230px; }
 .fgz-row .fgz-url  { flex:1; position:relative; }
+.fgz-row .fgz-add-url { width:180px; padding:6px 8px; font-size:13px; }
 .fgz-row .fgz-uid  { width:1px; height:1px; opacity:0; position:absolute; pointer-events:none; }
 .fgz-native-list {
     position:absolute; z-index:999; top:100%; left:0; right:0;
@@ -728,6 +757,11 @@ require($_SERVER["DOCUMENT_ROOT"] . "/bitrix/modules/main/include/prolog_admin_a
 .fgz-native-item:hover { background:#f5fbff; }
 .fgz-native-item .fgz-nid { color:#888; font-size:11px; margin-left:6px; }
 .fgz-native-empty { padding:8px 10px; color:#888; font-size:12px; }
+.fgz-src {
+    display:inline-block; font-size:10px; line-height:14px; color:#fff;
+    background:#a8b0ba; border-radius:3px; padding:0 5px; margin-left:4px;
+    vertical-align:1px;
+}
 .fgz-row .fgz-icon-wrap { position:relative; }
 .fgz-row .fgz-icon-btn {
     width:38px; height:34px; border:1px solid #c9cdd3; border-radius:6px;
@@ -782,6 +816,7 @@ $tabControl = new CAdminTabControl("fgzTabs", [
     ["DIV" => "fgz_tab_order",    "TAB" => Loc::getMessage("FG_MENUZ_TAB_ORDER"),    "TITLE" => Loc::getMessage("FG_MENUZ_TAB_ORDER_TITLE")],
     ["DIV" => "fgz_tab_hidden",   "TAB" => Loc::getMessage("FG_MENUZ_TAB_HIDDEN"),   "TITLE" => Loc::getMessage("FG_MENUZ_TAB_HIDDEN_TITLE")],
     ["DIV" => "fgz_tab_badges",   "TAB" => Loc::getMessage("FG_MENUZ_TAB_BADGES"),   "TITLE" => Loc::getMessage("FG_MENUZ_TAB_BADGES_TITLE")],
+    ["DIV" => "fgz_tab_access",   "TAB" => Loc::getMessage("FG_MENUZ_TAB_ACCESS"),   "TITLE" => Loc::getMessage("FG_MENUZ_TAB_ACCESS_TITLE")],
 ]);
 
 $tabControl->Begin();
@@ -818,13 +853,19 @@ $tabControl->Begin();
     <?php // Сбор штатных пунктов с портала ?>
     <div class="fgz-block" style="display:flex; gap:12px; align-items:center;">
         <button type="button" class="adm-btn" id="fgz-reload-native"><?= Loc::getMessage("FG_MENUZ_RELOAD_NATIVE") ?></button>
+        <button type="button" class="adm-btn" id="fgz-reload-sitemap" style="margin-left:8px;"><?= Loc::getMessage("FG_MENUZ_RELOAD_SITEMAP") ?></button>
         <span id="fgz-reload-status" style="color:#666; font-size:12px;">
             <?php
-            $nativeItems = \FG\Menuz\Catalog::items();
+            $nativeItems = \FG\Menuz\Catalog::itemsNative();
+            $allItems    = \FG\Menuz\Catalog::items();
             $nativeAll   = \FG\Menuz\Catalog::all();
             $nativeTs    = (int)($nativeAll["ts"] ?? 0);
-            if ($nativeItems) {
+            if ($allItems) {
                 echo Loc::getMessage("FG_MENUZ_CATALOG_COUNT", ["#COUNT#" => count($nativeItems)]);
+                $extraCount = count($allItems) - count($nativeItems);
+                if ($extraCount > 0) {
+                    echo ' <span style="color:#888;">(+' . $extraCount . ' ' . Loc::getMessage("FG_MENUZ_CATALOG_EXTRA") . ')</span>';
+                }
                 if ($nativeTs) {
                     echo ' ' . Loc::getMessage("FG_MENUZ_CATALOG_UPDATED", ["#DATE#" => date('d.m.Y H:i', $nativeTs)]);
                 }
@@ -836,6 +877,47 @@ $tabControl->Begin();
     </div>
 
     <?php // Редактор разделов ?>
+        <?php // Корневые пункты вне разделов ?>
+        <?php $rootItemsSaved = \FG\Menuz\Settings::get("root_items", []); if (!is_array($rootItemsSaved)) $rootItemsSaved = []; ?>
+        <div class="fgz-block" id="fgz-root-items">
+            <h3 style="margin-top:0;"><?= Loc::getMessage("FG_MENUZ_ROOT_ITEMS") ?></h3>
+            <p style="color:#666;font-size:12px;margin-top:-8px;">
+                <?= Loc::getMessage("FG_MENUZ_ROOT_ITEMS_DESC") ?>
+            </p>
+        <div id="fgz-root-rows">
+            <?php foreach ($rootItemsSaved as $ri => $rit): ?>
+                <div class="fgz-row">
+                    <div class="fgz-icon-wrap">
+                        <button type="button" class="fgz-icon-btn" data-icon="<?= htmlspecialcharsbx($rit["icon"] ?? "") ?>">
+                            <?php if (!empty($rit["icon"])): ?>
+                                <?php if (preg_match('~^(https?:|data:|/)~i', $rit["icon"])): ?>
+                                    <img src="<?= htmlspecialcharsbx($rit["icon"]) ?>" alt="">
+                                <?php else: ?>
+                                    <span class="ui-icon-set --<?= htmlspecialcharsbx($rit["icon"]) ?>"></span>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <span class="ui-icon-set --folder"></span>
+                            <?php endif; ?>
+                        </button>
+                        <input type="hidden" name="root_item_icon[]" class="fgz-icon-value" value="<?= htmlspecialcharsbx($rit["icon"] ?? "") ?>">
+                    </div>
+                    <input type="text" name="root_item_title[]" class="fgz-name" value="<?= htmlspecialcharsbx($rit["title"]) ?>" placeholder="<?= Loc::getMessage("FG_MENUZ_PLACEHOLDER_NAME") ?>">
+                    <input type="hidden" name="root_item_id[]" class="fgz-uid" value="<?= htmlspecialcharsbx($rit["id"] ?? "") ?>">
+                    <input type="text" name="root_item_counter[]" class="fgz-counter" placeholder="counter" value="<?= htmlspecialcharsbx($rit["counter"] ?? "") ?>" style="width:90px;">
+                    <input type="number" name="root_item_sort[]" class="fgz-sort" placeholder="sort" value="<?= htmlspecialcharsbx($rit["sort"] ?? "") ?>" style="width:70px;">
+                    <input type="text" name="root_item_add_url[]" class="fgz-add-url" placeholder="<?= Loc::getMessage("FG_MENUZ_PLACEHOLDER_ADD_URL") ?>" value="<?= htmlspecialcharsbx($rit["add_url"] ?? "") ?>" style="width:180px;">
+                    <div class="fgz-url">
+                        <input type="text" name="root_item_url[]" class="fgz-url-input" value="<?= htmlspecialcharsbx($rit["url"]) ?>" placeholder="<?= Loc::getMessage("FG_MENUZ_PLACEHOLDER_URL") ?>">
+                        <div class="fgz-native-list"></div>
+                    </div>
+                    <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#666;">
+                        <input type="checkbox" name="root_item_delete[<?= $ri ?>]" value="Y"> <?= Loc::getMessage("FG_MENUZ_DELETE") ?>
+                    </label>
+                </div>
+            <?php endforeach; ?>
+        </div>
+        <button type="button" class="adm-btn" id="fgz-root-add"><?= Loc::getMessage("FG_MENUZ_ADD_ROOT_ITEM") ?></button>
+    </div>
     <div id="fgz-sections">
         <?php foreach ($sections as $si => $sec): ?>
             <?php $isNative = !empty($sec["native"]); ?>
@@ -948,9 +1030,15 @@ $tabControl->Begin();
                                        name="sec_item_url[<?= $si ?>][]"
                                        class="fgz-url-input"
                                        value="<?= htmlspecialcharsbx($it["url"]) ?>"
-                                       placeholder="/url/ или https://...">
+                                       placeholder="<?= Loc::getMessage("FG_MENUZ_PLACEHOLDER_URL") ?>">
                                 <div class="fgz-native-list"></div>
                             </div>
+                            <input type="text"
+                                   name="sec_item_add_url[<?= $si ?>][]"
+                                   class="fgz-add-url"
+                                   value="<?= htmlspecialcharsbx($it["add_url"] ?? "") ?>"
+                                   placeholder="<?= Loc::getMessage("FG_MENUZ_PLACEHOLDER_ADD_URL") ?>"
+                                   style="width:180px;">
                             <span class="fgz-del" title="<?= Loc::getMessage("FG_MENUZ_DELETE_ITEM") ?>">✕</span>
                         </div>
                     <?php endforeach; ?>
@@ -1024,7 +1112,7 @@ $tabControl->Begin();
     }
     unset($_oi);
 
-    foreach (\FG\Menuz\Catalog::items() as $ci) {
+    foreach (\FG\Menuz\Catalog::itemsNative() as $ci) {
         if (isset($usedIds[$ci["id"]])) continue;
         $key = "root:" . $ci["id"];
         $orderItems[] = [
@@ -1034,6 +1122,32 @@ $tabControl->Begin();
             "icon"  => (string)($rootOverrides[(string)$ci["id"]]["icon"] ?? ""),
             "sort"  => $sortMap[$key] ?? 500,
         ];
+    }
+
+    // Корневые пункты, добавленные вручную (блок «Корневые пункты»)
+    $customRoots = \FG\Menuz\Settings::get("root_items", []);
+    if (is_array($customRoots)) {
+        foreach ($customRoots as $ri => $rit) {
+            // Единый ключ: тот же, что на публичке и в root_items
+            $rid = \FG\Menuz\Catalog::rootId($rit);
+            // пропускаем дубли (если этот же id уже добавлен выше через Catalog)
+            $already = false;
+            foreach ($orderItems as $_oi) {
+                if ($_oi["type"] === "root" && (string)$_oi["id"] === $rid) {
+                    $already = true; break;
+                }
+            }
+            if ($already) continue;
+
+            $key = "root:" . $rid;
+            $orderItems[] = [
+                "type"  => "root",
+                "id"    => $rid,
+                "title" => (string)($rit["title"] ?? "") . Loc::getMessage("FG_MENUZ_ORDER_ROOT_SUFFIX"),
+                "icon"  => (string)($rit["icon"] ?? ""),
+                "sort"  => $sortMap[$key] ?? 500,
+            ];
+        }
     }
         // Сортируем по sort (при равных — по title)
     usort($orderItems, function($a, $b){
@@ -1133,7 +1247,7 @@ $tabControl->Begin();
             </thead>
             <tbody>
                 <?php
-                $catalogItemsH = \FG\Menuz\Catalog::items();
+                $catalogItemsH = \FG\Menuz\Catalog::itemsNative();
                 foreach ($catalogItemsH as $ci):
                     $ciId = (string)($ci["id"] ?? "");
                     if ($ciId === "") continue;
@@ -1191,7 +1305,7 @@ $tabControl->Begin();
                         <input type="text" name="hidden_new_title" placeholder="<?= Loc::getMessage("FG_MENUZ_HIDDEN_CUSTOM_TITLE") ?>" style="width:200px;">
                     </td>
                     <td style="padding:6px;border-bottom:1px solid #eee;">
-                        <input type="text" name="hidden_new_url" placeholder="/url/ или https://..." style="width:300px;">
+                        <input type="text" name="hidden_new_url" placeholder="<?= Loc::getMessage("FG_MENUZ_PLACEHOLDER_URL") ?>" style="width:300px;">
                     </td>
                     <td style="padding:6px;border-bottom:1px solid #eee;color:#888;font-size:11px;">
                         <?= Loc::getMessage("FG_MENUZ_HIDDEN_TYPE_CUSTOM") ?>
@@ -1232,10 +1346,11 @@ $tabControl->Begin();
             </thead>
             <tbody>
                 <?php
-                // Собираем все пункты: сначала штатные из каталога, потом кастомные из sections
+                // Собираем все пункты: штатные из каталога, кастомные из sections
+                // и корневые пункты (вне разделов) — у всех может быть шильдик.
                 $allItemsForBadges = [];
-                foreach (\FG\Menuz\Catalog::items() as $ci) {
-                    if (empty($ci["id"])) continue;
+                foreach (\FG\Menuz\Catalog::nativeItems() as $ci) {
+                    if ($ci["id"] === "") continue;
                     $allItemsForBadges[$ci["id"]] = [
                         "id"    => $ci["id"],
                         "title" => $ci["title"] ?? "",
@@ -1252,6 +1367,16 @@ $tabControl->Begin();
                             "title" => $it["title"] ?? "",
                         ];
                     }
+                }
+                // Корневые пункты (вне разделов) — тоже могут иметь шильдик
+                foreach (\FG\Menuz\Settings::get("root_items", []) as $rit) {
+                    $rid = \FG\Menuz\Catalog::rootId($rit);
+                    if ($rid === "") continue;
+                    if (isset($allItemsForBadges[$rid])) continue;
+                    $allItemsForBadges[$rid] = [
+                        "id"    => $rid,
+                        "title" => $rit["title"] ?? "",
+                    ];
                 }
                 ksort($allItemsForBadges);
                 foreach ($allItemsForBadges as $ai):
@@ -1286,6 +1411,66 @@ $tabControl->Begin();
     </div>
 
     </td></tr><!-- /контент вкладки «Шильдики» -->
+
+<?php $tabControl->BeginNextTab(); ?>
+<tr><td colspan="2">
+
+<?php
+$grSaved = \FG\Menuz\Settings::get("group_rights", []);
+if (!is_array($grSaved)) $grSaved = [];
+$grDefault = (string)\FG\Menuz\Settings::get("group_default_right", "R");
+
+$groupsList = [];
+$rs = CGroup::GetList(($by="id"), ($order="asc"), [], ["FIELDS" => ["ID","NAME"]]);
+while ($g = $rs->Fetch()) {
+    $groupsList[(int)$g["ID"]] = $g["NAME"];
+}
+?>
+
+<div class="fgz-block">
+    <h3 style="margin-top:0;"><?= Loc::getMessage("FG_MENUZ_ACCESS_TITLE") ?></h3>
+    <p style="color:#666;font-size:12px;margin-top:-8px;">
+        <?= Loc::getMessage("FG_MENUZ_ACCESS_DESC") ?>
+    </p>
+
+    <table style="width:100%;border-collapse:collapse;max-width:700px;">
+        <thead>
+            <tr style="background:#f5f5f5;">
+                <th style="text-align:left;padding:8px;"><?= Loc::getMessage("FG_MENUZ_ACCESS_GROUP") ?></th>
+                <th style="text-align:left;padding:8px;width:220px;"><?= Loc::getMessage("FG_MENUZ_ACCESS_RIGHT") ?></th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td style="padding:6px;border-bottom:1px solid #eee;"><b><?= Loc::getMessage("FG_MENUZ_ACCESS_DEFAULT") ?></b></td>
+                <td style="padding:6px;border-bottom:1px solid #eee;">
+                    <select name="group_default_right" style="width:180px;">
+                        <option value="D"<?= $grDefault === "D" ? " selected" : "" ?>><?= Loc::getMessage("FG_MENUZ_RIGHT_DENIED") ?></option>
+                        <option value="R"<?= $grDefault === "R" ? " selected" : "" ?>><?= Loc::getMessage("FG_MENUZ_RIGHT_READ") ?></option>
+                        <option value="W"<?= $grDefault === "W" ? " selected" : "" ?>><?= Loc::getMessage("FG_MENUZ_RIGHT_FULL") ?></option>
+                    </select>
+                </td>
+            </tr>
+            <?php foreach ($groupsList as $gid => $gName): ?>
+                <tr>
+                    <td style="padding:6px;border-bottom:1px solid #eee;">
+                        [<?= $gid ?>] <?= htmlspecialcharsbx($gName) ?>
+                    </td>
+                    <td style="padding:6px;border-bottom:1px solid #eee;">
+                        <select name="group_right[<?= $gid ?>]" style="width:180px;">
+                            <option value=""<?= !isset($grSaved[$gid]) || $grSaved[$gid] === "" ? " selected" : "" ?>><?= Loc::getMessage("FG_MENUZ_RIGHT_NOT_SET") ?></option>
+                            <option value="D"<?= isset($grSaved[$gid]) && $grSaved[$gid] === "D" ? " selected" : "" ?>><?= Loc::getMessage("FG_MENUZ_RIGHT_DENIED") ?></option>
+                            <option value="R"<?= isset($grSaved[$gid]) && $grSaved[$gid] === "R" ? " selected" : "" ?>><?= Loc::getMessage("FG_MENUZ_RIGHT_READ") ?></option>
+                            <option value="W"<?= isset($grSaved[$gid]) && $grSaved[$gid] === "W" ? " selected" : "" ?>><?= Loc::getMessage("FG_MENUZ_RIGHT_FULL") ?></option>
+                        </select>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+</div>
+
+</td></tr><!-- /контент вкладки «Доступ» -->
 
 <?php $tabControl->Buttons(["btnCancel" => false]); ?>
 </form>
@@ -1365,7 +1550,7 @@ $tabControl->Begin();
     }
 
     // клик по кнопке иконки
-    wrap.addEventListener('click', function (e) {
+    document.addEventListener('click', function (e) {
         var btn = e.target.closest ? e.target.closest('.fgz-icon-btn') : null;
         if (btn) {
             e.preventDefault();
@@ -1455,12 +1640,42 @@ $tabControl->Begin();
             '<input type="text" name="sec_item_counter[' + idx + '][]" class="fgz-counter" placeholder="counter" value="" style="width:90px;">' +
             '<input type="number" name="sec_item_sort[' + idx + '][]" class="fgz-sort" placeholder="sort" value="" style="width:70px;">' +
             '<div class="fgz-url">' +
-                '<input type="text" name="sec_item_url[' + idx + '][]" class="fgz-url-input" value="" placeholder="/url/ или https://...">' +
+                '<input type="text" name="sec_item_url[' + idx + '][]" class="fgz-url-input" value="" placeholder="<?= Loc::getMessage("FG_MENUZ_PLACEHOLDER_URL") ?>">' +
                 '<div class="fgz-native-list"></div>' +
             '</div>' +
+            '<input type="text" name="sec_item_add_url[' + idx + '][]" class="fgz-add-url" value="" placeholder="<?= Loc::getMessage("FG_MENUZ_PLACEHOLDER_ADD_URL") ?>" style="width:180px;">' +
             '<span class="fgz-del" title="<?= Loc::getMessage("FG_MENUZ_DELETE_ITEM") ?>">✕</span>';
         return row;
     }
+
+        // Добавление корневого пункта
+    (function initRootAdd(){
+        var btn = document.getElementById('fgz-root-add');
+        var wrap = document.getElementById('fgz-root-rows');
+        if (!btn || !wrap) return;
+        btn.addEventListener('click', function(){
+            var row = document.createElement('div');
+            row.className = 'fgz-row';
+            row.innerHTML =
+                '<div class="fgz-icon-wrap">' +
+                    '<button type="button" class="fgz-icon-btn" data-icon=""><span class="ui-icon-set --folder"></span></button>' +
+                    '<input type="hidden" name="root_item_icon[]" class="fgz-icon-value" value="">' +
+                '</div>' +
+                '<input type="text" name="root_item_title[]" class="fgz-name" value="" placeholder="<?= Loc::getMessage("FG_MENUZ_PLACEHOLDER_NAME") ?>">' +
+                '<input type="hidden" name="root_item_id[]" class="fgz-uid" value="">' +
+                '<input type="text" name="root_item_counter[]" class="fgz-counter" placeholder="counter" value="" style="width:90px;">' +
+                '<input type="number" name="root_item_sort[]" class="fgz-sort" placeholder="sort" value="" style="width:70px;">' +
+                '<input type="text" name="root_item_add_url[]" class="fgz-add-url" placeholder="<?= Loc::getMessage("FG_MENUZ_PLACEHOLDER_ADD_URL") ?>" value="" style="width:180px;">' +
+                '<div class="fgz-url">' +
+                    '<input type="text" name="root_item_url[]" class="fgz-url-input" value="" placeholder="<?= Loc::getMessage("FG_MENUZ_PLACEHOLDER_URL") ?>">' +
+                    '<div class="fgz-native-list"></div>' +
+                '</div>' +
+                '<label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#666;">' +
+                    '<input type="checkbox" name="root_item_delete[]" value="Y"> <?= Loc::getMessage("FG_MENUZ_DELETE") ?>' +
+                '</label>';
+            wrap.appendChild(row);
+        });
+    })();
 
     // Добавление нового раздела
     document.getElementById('fgz-add-section').addEventListener('click', function () {
@@ -1479,72 +1694,16 @@ $tabControl->Begin();
         wrap.appendChild(block);
     });
 
-    //     document.getElementById('fgz-add-native').addEventListener('click', function () {
-    //     var sel = document.getElementById('fgz-native-select');
-    //     var gid = sel.value;
-    //     if (!gid) { alert('Выбери штатную группу'); return; }
-    //     var gtitle = sel.options[sel.selectedIndex].text;
-
-    //     var exists = false;
-    //     document.querySelectorAll('#fgz-sections .fgz-section').forEach(function (b) {
-    //         var idInput = b.querySelector('input[name="sec_id[]"]');
-    //         if (idInput && idInput.value === gid) exists = true;
-    //     });
-    //     if (exists) { alert('Эта группа уже добавлена'); return; }
-
-    //     var idx = secCount++;
-    //     var block = document.createElement('div');
-    //     block.className = 'fgz-block fgz-section fgz-native';
-    //     block.dataset.secIndex = idx;
-    //     block.innerHTML =
-    //         '<div class="fgz-sec-head">' +
-    //             '<input type="hidden" name="sec_id[]" value="' + gid + '">' +
-    //             '<input type="hidden" name="sec_native[]" value="1">' +
-    //             '<input type="text" name="sec_title[]" value="' + gtitle + '" readonly style="background:#f5f5f5;">' +
-    //             '<span style="margin-left:8px;color:#888;font-size:11px;">штатная группа Bitrix</span>' +
-    //         '</div>' +
-    //         '<div class="fgz-items" data-items-for="' + idx + '"></div>' +
-    //         '<button type="button" class="adm-btn fgz-add">+ Добавить пункт</button>';
-    //     document.getElementById('fgz-sections').appendChild(block);
-    // });
-
-    // Автокомплит штатных ссылок через iframe
-    var NATIVE = <?= json_encode(\FG\Menuz\Catalog::items(), JSON_UNESCAPED_UNICODE) ?>;
+    // Автокомплит ссылок: полный список каталога (штатные + sitemap + manual)
+    // в едином формате. Источник помечается меткой в выпадающем списке.
+    var NATIVE = <?= json_encode(\FG\Menuz\Catalog::allItems(), JSON_UNESCAPED_UNICODE) ?>;
+    window.__fgzNative = NATIVE;
     var nativeReady = true;
 
-    // (function loadNative() {
-    //     var ifr = document.createElement('iframe');
-    //     ifr.src = '/?fgz_raw=1';
-    //     ifr.style.cssText = 'position:fixed;left:-9999px;width:1px;height:1px;';
-    //     document.body.appendChild(ifr);
-
-    //     ifr.addEventListener('load', function () {
-    //         try {
-    //             var doc = ifr.contentDocument;
-    //             if (!doc) return;
-    //             var root = doc.getElementById('menu-items-block');
-    //             if (!root) return;
-    //             var seen = {};
-    //             root.querySelectorAll('li.menu-item-block[data-id]').forEach(function (li) {
-    //                 if (li.classList.contains('fgz-section')) return;
-    //                 if (li.classList.contains('fgz-custom')) return;
-    //                 if (li.classList.contains('fgz-moved')) return;
-    //                 var id = li.getAttribute('data-id') || '';
-    //                 if (!id || id.indexOf('fgz_') === 0 || seen[id]) return;
-    //                 seen[id] = true;
-    //                 var t = (li.querySelector('.menu-item-link-text') || {}).textContent || '';
-    //                 var a = li.querySelector('a.menu-item-link');
-    //                 var u = a ? (a.getAttribute('href') || '') : '';
-    //                 NATIVE.push({ id: id, title: t.trim(), link: u });
-    //             });
-    //         } catch (e) {}
-    //         nativeReady = true;
-    //         ifr.remove();
-    //     });
-    // })();
-
     // Список штатных пунктов для автокомплита
-    function showNative(box) {
+    function showNative(box, query) {
+        query = (query || '').toString().trim().toLowerCase();
+
         if (!nativeReady) {
             box.innerHTML = '<div class="fgz-native-empty"><?= Loc::getMessage("FG_MENUZ_JS_LOADING") ?></div>';
             box.classList.add('open');
@@ -1555,26 +1714,83 @@ $tabControl->Begin();
             box.classList.add('open');
             return;
         }
-        box.innerHTML = NATIVE.map(function (n) {
+
+        var list = NATIVE;
+        if (query !== '') {
+            list = NATIVE.filter(function (n) {
+                var t = (n.title || '').toLowerCase();
+                var l = (n.link || '').toLowerCase();
+                var i = (n.id || '').toLowerCase();
+                return t.indexOf(query) !== -1
+                    || l.indexOf(query) !== -1
+                    || i.indexOf(query) !== -1;
+            });
+        }
+
+        if (!list.length) {
+            box.innerHTML = '<div class="fgz-native-empty"><?= Loc::getMessage("FG_MENUZ_JS_NOT_FOUND") ?></div>';
+            box.classList.add('open');
+            return;
+        }
+
+        var limited = list;
+
+        box.innerHTML = limited.map(function (n) {
             var safeTitle = (n.title || '').replace(/"/g, '&quot;');
             var safeLink  = (n.link  || '').replace(/"/g, '&quot;');
             var safeCounter = (n.counter || '').replace(/"/g, '&quot;');
             var safeGroup   = (n.group || '').replace(/"/g, '&quot;');
             var safeIcon = (n.icon || '').replace(/"/g, '&quot;');
+            // Метка источника: часть пунктов собрана с /sitemap/ или вручную
+            var srcLabel = '';
+            if (n.source === 'sitemap') srcLabel = 'sitemap';
+            else if (n.source === 'manual') srcLabel = 'manual';
             return '<div class="fgz-native-item" data-id="' + n.id + '" data-title="' + safeTitle + '" data-link="' + safeLink + '" data-counter="' + safeCounter + '" data-group="' + safeGroup + '" data-icon="' + safeIcon + '">'
-                 + n.title + ' <span class="fgz-nid">' + n.id + '</span></div>';
+                 + n.title + ' <span class="fgz-nid">' + n.id + '</span>'
+                 + (srcLabel ? ' <span class="fgz-src">' + srcLabel + '</span>' : '')
+                 + '</div>';
         }).join('');
+
         box.classList.add('open');
     }
 
-    wrap.addEventListener('focusin', function (e) {
+    document.addEventListener('focusin', function (e) {
         var inp = e.target.closest ? e.target.closest('.fgz-url-input') : null;
         if (!inp) return;
         var box = inp.parentNode.querySelector('.fgz-native-list');
-        if (box) showNative(box);
+        if (box) showNative(box, inp.value);
     });
 
-    wrap.addEventListener('click', function (e) {
+        document.addEventListener('input', function (e) {
+        var inp = e.target.closest ? e.target.closest('.fgz-url-input') : null;
+        if (!inp) return;
+        var box = inp.parentNode.querySelector('.fgz-native-list');
+        if (!box) return;
+        if (!box.classList.contains('open')) return;
+        showNative(box, inp.value);
+    });
+
+    document.addEventListener('keydown', function (e) {
+        var inp = e.target.closest ? e.target.closest('.fgz-url-input') : null;
+        if (!inp) return;
+        var box = inp.parentNode.querySelector('.fgz-native-list');
+        if (!box || !box.classList.contains('open')) return;
+
+        if (e.key === 'Escape') {
+            box.classList.remove('open');
+            return;
+        }
+        if (e.key === 'Enter') {
+            var first = box.querySelector('.fgz-native-item');
+            if (first) {
+                e.preventDefault();
+                first.click();
+            }
+        }
+    });
+
+
+    document.addEventListener('click', function (e) {
         var item = e.target.closest ? e.target.closest('.fgz-native-item') : null;
         if (!item) return;
         var row = item.closest('.fgz-row');
@@ -1614,6 +1830,21 @@ $tabControl->Begin();
             // Открываем публичку с параметром сбора — там сработает редирект на страницу сбора
             var w = window.open('/stream/?fgz_collect=1', '_blank');
             // Следим за закрытием окна
+            var check = setInterval(function () {
+                if (!w || w.closed) {
+                    clearInterval(check);
+                    if (reloadStatus) reloadStatus.textContent = '<?= Loc::getMessage("FG_MENUZ_JS_UPDATING") ?>';
+                    location.reload();
+                }
+            }, 500);
+        });
+    }
+
+    var reloadSitemap = document.getElementById('fgz-reload-sitemap');
+    if (reloadSitemap) {
+        reloadSitemap.addEventListener('click', function () {
+            if (reloadStatus) reloadStatus.textContent = '<?= Loc::getMessage("FG_MENUZ_JS_OPENING_SITEMAP") ?>';
+            var w = window.open('/sitemap/?fgz_collect_sitemap=1', '_blank');
             var check = setInterval(function () {
                 if (!w || w.closed) {
                     clearInterval(check);

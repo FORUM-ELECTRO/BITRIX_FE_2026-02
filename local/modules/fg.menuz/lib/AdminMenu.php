@@ -8,6 +8,10 @@
 
 namespace FG\Menuz;
 
+use Bitrix\Main\Localization\Loc;
+
+Loc::loadMessages(__FILE__);
+
 /**
  * Добавляет модуль в глобальное меню администрирования.
  */
@@ -15,8 +19,6 @@ final class AdminMenu
 {
     /**
      * Обработчик main:OnBuildGlobalMenu.
-     *
-     * Создаёт меню «ФЭ» и пункт «Разделы меню».
      *
      * @param array &$adminMenu  Глобальное меню администрирования.
      * @param array &$moduleMenu Меню модулей.
@@ -38,8 +40,8 @@ final class AdminMenu
         if (!isset($adminMenu["global_menu_fg_menuz"])) {
             $adminMenu["global_menu_fg_menuz"] = [
                 "menu_id"   => "fg_menuz",
-                "text"      => "ФЭ",
-                "title"     => "Модули FG",
+                "text"      => Loc::getMessage("FG_MENUZ_ADMIN_MENU_TEXT"),
+                "title"     => Loc::getMessage("FG_MENUZ_ADMIN_MENU_TITLE"),
                 "url"       => null,
                 "sort"      => 510,
                 "items_id"  => "global_menu_fg_menuz",
@@ -51,16 +53,16 @@ final class AdminMenu
 
         // Защита от дубля
         foreach ($adminMenu["global_menu_fg_menuz"]["items"] as $it) {
-            if (($it["text"] ?? "") === "Разделы меню") {
+            if (($it["text"] ?? "") === Loc::getMessage("FG_MENUZ_ADMIN_MENU_ITEM")) {
                 return;
             }
         }
 
         // Дописываем свой подпункт
         $adminMenu["global_menu_fg_menuz"]["items"][] = [
-            "text"  => "Разделы меню",
-            "title" => "Разделы и пункты левого меню",
-            "url" => "/bitrix/admin/fg_menuz.php",
+            "text"  => Loc::getMessage("FG_MENUZ_ADMIN_MENU_ITEM"),
+            "title" => Loc::getMessage("FG_MENUZ_ADMIN_MENU_ITEM_TITLE"),
+            "url"   => "/bitrix/admin/fg_menuz.php",
             "icon"  => "settings_menu_icon",
         ];
     }

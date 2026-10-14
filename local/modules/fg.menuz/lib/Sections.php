@@ -67,6 +67,7 @@ final class Sections
                     "id"      => mb_substr(preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)($it["id"] ?? "")), 0, 100),
                     "counter" => mb_substr(preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)($it["counter"] ?? "")), 0, 100),
                     "sort"    => ($sortVal === "" || $sortVal === null) ? null : (int)$sortVal,
+                    "add_url" => mb_substr(trim((string)($it["add_url"] ?? "")), 0, 500),
                 ];
             }
             $isNative = !empty($s["native"]);
@@ -76,6 +77,7 @@ final class Sections
                 "icon"   => trim((string)($s["icon"] ?? "")),
                 "items"  => $items,
                 "native" => $isNative ?: null,
+                // "personal" => !empty($s["personal"]) ?: null,
             ];
         }
         Settings::set("sections", $clean);

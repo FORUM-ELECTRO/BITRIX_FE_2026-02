@@ -79,3 +79,31 @@ $MESS['FG_MENUZ_BADGE_GREEN'] = 'зелёный';
 $MESS['FG_MENUZ_BADGE_YELLOW'] = 'жёлтый';
 $MESS['FG_MENUZ_BADGE_RED'] = 'красный';
 $MESS['FG_MENUZ_BADGE_BLUE'] = 'голубой';
+
+// Корневые пункты
+$MESS['FG_MENUZ_ROOT_ITEMS'] = 'Корневые пункты (вне разделов)';
+$MESS['FG_MENUZ_ROOT_ITEMS_DESC'] = 'Пункты, которые появятся в левом меню на верхнем уровне — наравне с «Главная», «Лента».';
+$MESS['FG_MENUZ_ADD_ROOT_ITEM'] = '+ Добавить корневой пункт';
+$MESS['FG_MENUZ_DELETE'] = 'удалить';
+$MESS['FG_MENUZ_PLACEHOLDER_NAME'] = 'Название';
+$MESS['FG_MENUZ_PLACEHOLDER_ADD_URL'] = 'URL создания (+)';
+$MESS['FG_MENUZ_RELOAD_SITEMAP'] = 'Собрать ссылки из /sitemap/';
+$MESS['FG_MENUZ_CATALOG_EXTRA'] = 'из sitemap';
+
+// Вкладка «Доступ»
+$MESS['FG_MENUZ_ACCESS_DENIED'] = 'Доступ запрещён';
+$MESS['FG_MENUZ_TAB_ACCESS'] = 'Доступ';
+$MESS['FG_MENUZ_TAB_ACCESS_TITLE'] = 'Кому показывать модуль';
+$MESS['FG_MENUZ_ACCESS_TITLE'] = 'Доступ к модулю';
+$MESS['FG_MENUZ_ACCESS_DESC'] = '«Доступ закрыт» — модуль не работает для этой группы (меню штатное).<br>«Чтение» — модуль работает (меню перестроено).<br>«Полный доступ» — как «Чтение», плюс доступ в админку модуля.';
+$MESS['FG_MENUZ_ACCESS_GROUP'] = 'Группа';
+$MESS['FG_MENUZ_ACCESS_RIGHT'] = 'Право';
+$MESS['FG_MENUZ_ACCESS_DEFAULT'] = 'По умолчанию (для всех)';
+$MESS['FG_MENUZ_RIGHT_DENIED'] = 'Доступ закрыт';
+$MESS['FG_MENUZ_RIGHT_READ'] = 'Чтение';
+$MESS['FG_MENUZ_RIGHT_FULL'] = 'Полный доступ';
+$MESS['FG_MENUZ_RIGHT_NOT_SET'] = '— не задано —';
+
+// JS
+$MESS['FG_MENUZ_JS_NOT_FOUND'] = 'Ничего не найдено';
+$MESS['FG_MENUZ_JS_OPENING_SITEMAP'] = 'Открываю /sitemap/...';
