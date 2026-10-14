@@ -26,8 +26,6 @@ class fg_menuz extends CModule
     public $MODULE_NAME;
     /** @var string Описание модуля. */
     public $MODULE_DESCRIPTION;
-    /** @var string Права доступа. */
-    public $MODULE_GROUP_RIGHTS = "N";
 
     public function __construct()
     {
@@ -50,21 +48,6 @@ class fg_menuz extends CModule
         $this->InstallFiles();
         $this->InstallEvents();
     }
-
-    // public function DoUninstall()
-    // {
-    //     global $APPLICATION;
-    //     $this->UnInstallFiles();
-    //     $this->UnInstallEvents();
-    //     if (($_REQUEST["save_settings"] ?? "N") !== "Y") {
-    //         \Bitrix\Main\Config\Option::delete($this->MODULE_ID);
-    //     }
-    //     ModuleManager::unRegisterModule($this->MODULE_ID);
-    //     $APPLICATION->IncludeAdminFile(
-    //         "Удаление модуля",
-    //         __DIR__ . "/unstep.php"
-    //     );
-    // }
 
     /**
      * Удаляет модуль в два шага: подтверждение и снятие регистрации.
