@@ -265,7 +265,7 @@ if ($action === 'analyze') {
  *
  * @throws \Exception При отсутствии данных или ошибке HTTP.
  */
-function callSberApi(string $inn, string $kpp, array $config): array
+function callSberApi(string $inn, string $kpp, array &$config): array
 {
     $isIp = (strlen($inn) === 12);
 
@@ -278,7 +278,20 @@ function callSberApi(string $inn, string $kpp, array $config): array
         $data['organizations'][0]['kpp'] = $kpp;
     }
 
+    try {
     $response = curlRequest($apiUrl, json_encode($data), $config, true);
+} catch (\Exception $e) {
+    if (strpos($e->getMessage(), 'Токен') !== false) {
+        $newToken = refreshSberToken($config);
+        if ($newToken) {
+            $response = curlRequest($apiUrl, json_encode($data), $config, true);
+        } else {
+            throw $e;
+        }
+    } else {
+        throw $e;
+    }
+}
     $responseData = json_decode($response, true);
 
     if (empty($responseData['message']['organizations'][0]['indicators'])) {
@@ -330,12 +343,15 @@ function callSberApi(string $inn, string $kpp, array $config): array
         if (!empty($reportJson['externalLink'])) {
             // Скачиваем PDF
             $fileContent = curlRequest($reportJson['externalLink'], null, $config, false);
-            if (!empty($fileContent)) {
+            if (!empty($fileContent) && strpos($fileContent, '%PDF') === 0) {
                 $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/upload/sber_reports/';
                 if (!is_dir($uploadDir)) mkdir($uploadDir, 0775, true);
                 $fileName = 'report_' . $inn . '_' . date('Ymd_His') . '.pdf';
-                file_put_contents($uploadDir . $fileName, $fileContent);
-                $result['report_file'] = '/upload/sber_reports/' . $fileName;
+                $filePath = $uploadDir . $fileName;
+                $written = file_put_contents($filePath, $fileContent);
+                if ($written && is_file($filePath)) {
+                    $result['report_file'] = '/upload/sber_reports/' . $fileName;
+                }
             }
         }
     } catch (\Exception $e) {
@@ -357,38 +373,100 @@ function callSberApi(string $inn, string $kpp, array $config): array
  *
  * @throws \Exception При CURL, HTTP-ошибке или истечении токена (401).
  */
-function curlRequest(string $url, ?string $payload, array $config, bool $isJson): string
+function curlRequest(string $url, ?string $payload, array &$config, bool $isJson): string
+{
+    $maxRetries = 2;
+    $attempt = 0;
+
+    while ($attempt < $maxRetries) {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, $config['timeout'] ?? 30);
+        curl_setopt($ch, CURLOPT_SSLCERTTYPE, 'P12');
+        curl_setopt($ch, CURLOPT_SSLCERT, $config['cert_path']);
+        curl_setopt($ch, CURLOPT_SSLCERTPASSWD, $config['cert_password']);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+
+        if ($payload !== null) {
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Content-Type: application/json',
+                'Accept: application/json',
+                'Authorization: Bearer ' . $config['access_token'],
+            ]);
+        } else {
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Accept: application/octet-stream']);
+        }
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        if ($error) throw new \Exception(Loc::getMessage('SBER_AJAX_ERROR_CURL') . $error);
+
+        // Если 401 — обновляем токен и повторяем
+        if ($httpCode === 401 && $attempt === 0) {
+            $newToken = refreshSberToken($config);
+            if ($newToken) {
+                $attempt++;
+                continue;
+            }
+            throw new \Exception(Loc::getMessage('SBER_AJAX_ERROR_TOKEN'));
+        }
+
+        if ($httpCode !== 200) {
+            throw new \Exception(Loc::getMessage('SBER_AJAX_ERROR_HTTP', ['#CODE#' => $httpCode]));
+        }
+
+        return $response;
+    }
+
+    throw new \Exception(Loc::getMessage('SBER_AJAX_ERROR_TOKEN'));
+}
+
+/**
+ * Обновляет токен через refresh_token и сохраняет в config.php.
+ *
+ * @param array $config Конфигурация (по ссылке).
+ * @return string|null Новый access_token или null при ошибке.
+ */
+function refreshSberToken(array &$config): ?string
 {
     $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_URL, 'https://fintech.sberbank.ru:9443/ic/sso/api/v2/oauth/token');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, $config['timeout'] ?? 30);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
+        'client_id' => '35107',
+        'client_secret' => $config['client_secret'],
+        'grant_type' => 'refresh_token',
+        'refresh_token' => $config['refresh_token'] ?? '',
+    ]));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/x-www-form-urlencoded']);
     curl_setopt($ch, CURLOPT_SSLCERTTYPE, 'P12');
     curl_setopt($ch, CURLOPT_SSLCERT, $config['cert_path']);
     curl_setopt($ch, CURLOPT_SSLCERTPASSWD, $config['cert_password']);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
 
-    if ($payload !== null) {
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json',
-            'Accept: application/json',
-            'Authorization: Bearer ' . $config['access_token'],
-        ]);
-    } else {
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Accept: application/octet-stream']);
-    }
-
     $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $error = curl_error($ch);
     curl_close($ch);
 
-    if ($error) throw new \Exception(Loc::getMessage('SBER_AJAX_ERROR_CURL') . $error);
-    if ($httpCode === 401) throw new \Exception(Loc::getMessage('SBER_AJAX_ERROR_TOKEN'));
-    if ($httpCode !== 200) throw new \Exception(Loc::getMessage('SBER_AJAX_ERROR_HTTP', ['#CODE#' => $httpCode]));
+    $data = json_decode($response, true);
+    if (empty($data['access_token'])) {
+        return null;
+    }
 
-    return $response;
+    $config['access_token'] = $data['access_token'];
+    $config['refresh_token'] = $data['refresh_token'];
+
+    // Сохраняем в config.php
+    $configContent = "<?php\n\n/**\n * Конфигурация для Sber API.\n *\n * @package CompanySearchSberActivity\n */\n\nreturn " . var_export($config, true) . ";\n";
+    @file_put_contents($_SERVER['DOCUMENT_ROOT'] . '/local/activities/custom/companysearchsberactivity/config.php', $configContent);
+
+    return $data['access_token'];
 }
