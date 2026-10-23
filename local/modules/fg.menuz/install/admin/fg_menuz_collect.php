@@ -36,8 +36,7 @@ if (!is_array($data)) {
     exit;
 }
 
-// check_bitrix_sessid() принимает имя параметра запроса, а не значение,
-// поэтому для JSON-тела sessid сравниваем напрямую.
+// sessid сверяем напрямую: check_bitrix_sessid() читает имя параметра запроса, а JSON- тело его не содержит
 $sessid = (string)($data["sessid"] ?? "");
 if ($sessid !== "" && $sessid !== bitrix_sessid()) {
     echo json_encode(["error" => Loc::getMessage("FG_MENUZ_COLLECT_BAD_SESSID")]);

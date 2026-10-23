@@ -30,16 +30,14 @@ use FG\Menuz\Settings;
 
 global $APPLICATION, $USER;
 
-// Доступ по правам модуля (вкладка «Доступ» в настройках модуля):
-// R — просмотр, W — редактирование. Админы всегда имеют полный доступ.
+// Доступ по правам модуля: R — просмотр, W — редактирование, админы всегда с полным доступом
 if ($APPLICATION->GetGroupRight("fg.menuz") < "R") {
     $APPLICATION->AuthForm(Loc::getMessage("FG_MENUZ_ACCESS_DENIED"));
 }
 
 Loader::includeModule("fg.menuz");
 
-// Фразы берём из каталога модуля: страница выполняется из /bitrix/admin/,
-// поэтому loadMessages(__FILE__) там lang-файл не находит
+// Явно подключаем lang-файл из каталога модуля: страница выполняется из /bitrix/admin/
 $fgzSelf = \Bitrix\Main\Loader::getLocal("modules/fg.menuz/install/admin/fg_menuz.php");
 Loc::loadMessages($fgzSelf ?: __FILE__);
 
@@ -518,6 +516,8 @@ if (
     $tCnt   = (array)($_POST["sec_item_counter"] ?? []);
     $tSort  = (array)($_POST["sec_item_sort"] ?? []);
     $tAddUrl = (array)($_POST["sec_item_add_url"] ?? []);
+    $tSlider = (array)($_POST["sec_item_slider"] ?? []);
+    $tSliderKey = (array)($_POST["sec_item_slider_key"] ?? []);
     $dels   = (array)($_POST["sec_delete"] ?? []);
 
     foreach ($titles as $i => $title) {
@@ -538,6 +538,8 @@ if (
         $n2 = (array)($tCnt[$i] ?? []);
         $s2 = (array)($tSort[$i] ?? []);
         $a2 = (array)($tAddUrl[$i] ?? []);
+        $sl2 = (array)($tSlider[$i] ?? []);
+        $sliderKeys = (array)($tSliderKey[$i] ?? []);
         foreach ($t2 as $j => $t) {
             $t  = trim((string)$t);
             $u  = trim((string)($u2[$j] ?? ""));
@@ -557,6 +559,9 @@ if (
                 "counter" => mb_substr(preg_replace('/[^a-zA-Z0-9_\-]/', '', $cn), 0, 100),
                 "sort"    => $sortVal,
                 "add_url" => mb_substr(trim((string)($a2[$j] ?? "")), 0, 500),
+                // Ключ чекбокса «слайдер»: id пункта либо сгенерированный ключ из sec_item_slider_key
+                "slider"  => ($sliderKeys[$j] ?? "") !== "" && !empty($sl2[$sliderKeys[$j]]) ? "Y" : "N",
+                
             ];
         }
         $isNative = !empty($natives[$i]);
@@ -644,8 +649,7 @@ if (
         if ($u === "") continue;
         $ic = trim((string)($rIcons[$i] ?? ""));
         $id = preg_replace('/[^a-zA-Z0-9_\-]/', '', trim((string)($rIds[$i] ?? "")));
-        // Стабильный id: если не задан — генерируем по URL, чтобы админка,
-        // order, root_items и DOM на публичке использовали один ключ.
+        // Единый ключ корневого пункта: id по URL, если не задан вручную
         if ($id === "") {
             $id = "fgz_root_" . substr(md5($u), 0, 12);
         }
@@ -687,9 +691,8 @@ if (!$sections) {
     $sections = [];
 }
 
-// Добавляем штатные группы из каталога, которых ещё нет в $sections,
-// чтобы они сразу отображались в форме как редактируемые разделы.
-$existingNative = [];
+    // Добавляем штатные группы из каталога, если их ещё нет в текущих разделах
+    $existingNative = [];
 foreach ($sections as $s) {
     if (!empty($s["native"])) $existingNative[(string)$s["id"]] = true;
 }
@@ -979,7 +982,11 @@ $tabControl->Begin();
                         $sb = (isset($b["sort"]) && $b["sort"] !== null && $b["sort"] !== "") ? (int)$b["sort"] : 999999;
                         return $sa - $sb;
                     });
-                    foreach ($items as $it): ?>
+                    foreach ($items as $itemIdx => $it): ?>
+                        <?php
+                        // Ключ чекбокса «слайдер»: id пункта либо сгенерированный ключ для пунктов без id
+                        $sliderKey = !empty($it["id"]) ? $it["id"] : ("fgz_slider_" . $si . "_" . $itemIdx);
+                        ?>
                         <div class="fgz-row">
                             <div class="fgz-icon-wrap">
                                 <button type="button" class="fgz-icon-btn" data-icon="<?= htmlspecialcharsbx($it["icon"]) ?>">
@@ -1039,6 +1046,10 @@ $tabControl->Begin();
                                    value="<?= htmlspecialcharsbx($it["add_url"] ?? "") ?>"
                                    placeholder="<?= Loc::getMessage("FG_MENUZ_PLACEHOLDER_ADD_URL") ?>"
                                    style="width:180px;">
+                                    <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#666;">
+                                <input type="hidden" name="sec_item_slider_key[<?= $si ?>][]" value="<?= htmlspecialcharsbx($sliderKey) ?>">
+                                <input type="checkbox" name="sec_item_slider[<?= $si ?>][<?= htmlspecialcharsbx($sliderKey) ?>]" value="Y"<?= (isset($it["slider"]) && $it["slider"] === "Y") ? " checked" : "" ?>> слайдер
+                            </label>
                             <span class="fgz-del" title="<?= Loc::getMessage("FG_MENUZ_DELETE_ITEM") ?>">✕</span>
                         </div>
                     <?php endforeach; ?>
@@ -1088,8 +1099,7 @@ $tabControl->Begin();
         ];
     }
 
-    // Корневые пункты (из каталога, которых НЕТ ни в одном разделе
-    // и которые сами не являются разделами)
+    // Корневые пункты из каталога, не входящие ни в один раздел и не являющиеся разделами
     $usedIds = [];
     foreach ($sections as $sec) {
         // сам раздел — тоже исключаем
@@ -1346,9 +1356,8 @@ $tabControl->Begin();
             </thead>
             <tbody>
                 <?php
-                // Собираем все пункты: штатные из каталога, кастомные из sections
-                // и корневые пункты (вне разделов) — у всех может быть шильдик.
-                $allItemsForBadges = [];
+    // Собираем все пункты для шильдиков: штатные из каталога, кастомные из разделов и корневые
+    $allItemsForBadges = [];
                 foreach (\FG\Menuz\Catalog::nativeItems() as $ci) {
                     if ($ci["id"] === "") continue;
                     $allItemsForBadges[$ci["id"]] = [
@@ -1506,12 +1515,25 @@ while ($g = $rs->Fetch()) {
 
     document.body.appendChild(picker);
 
+    /**
+     * Закрывает пикер иконок.
+     *
+     * @return {void}
+     */
     function closePicker() {
         picker.classList.remove('open');
         current = null;
     }
 
-    // Отрисовывает иконку на кнопке (штатная, картинка или первая буква)
+    /**
+     * Рисует иконку на кнопке: ui-icon-set, картинка или первая буква.
+     *
+     * @param {HTMLElement} btn      Кнопка иконки.
+     * @param {HTMLElement} valInput Скрытый input с текущим значением.
+     * @param {string}      icon     Значение иконки.
+     *
+     * @return {void}
+     */
     function setIcon(btn, valInput, icon) {
         valInput.value = icon || '';
         btn.innerHTML = '';
@@ -1540,7 +1562,14 @@ while ($g = $rs->Fetch()) {
         }
     }
 
-    // Открывает пикер у нажатой кнопки
+    /**
+     * Открывает пикер рядом с нажатой кнопкой иконки.
+     *
+     * @param {HTMLElement} btn      Кнопка иконки.
+     * @param {HTMLElement} valInput Скрытый input для записи значения.
+     *
+     * @return {void}
+     */
     function openPicker(btn, valInput) {
         var r = btn.getBoundingClientRect();
         picker.style.top  = (r.bottom + window.scrollY + 4) + 'px';
@@ -1625,10 +1654,18 @@ while ($g = $rs->Fetch()) {
         closePicker();
     });
 
-    // Создаёт строку пункта меню с полями формы
+    /**
+     * Создаёт строку пункта меню со всеми полями формы.
+     *
+     * @param {number|string} idx Индекс раздела.
+     *
+     * @return {HTMLElement}
+     */
     function makeRow(idx) {
         var row = document.createElement('div');
         row.className = 'fgz-row';
+        // Единый ключ для скрытого поля и чекбокса «слайдер» нового пункта
+        var sliderKey = 'fgz_slider_' + idx + '_' + (Date.now() + Math.random());
         row.innerHTML =
             '<div class="fgz-icon-wrap">' +
                 '<button type="button" class="fgz-icon-btn" data-icon=""><span class="ui-icon-set --folder"></span></button>' +
@@ -1644,11 +1681,19 @@ while ($g = $rs->Fetch()) {
                 '<div class="fgz-native-list"></div>' +
             '</div>' +
             '<input type="text" name="sec_item_add_url[' + idx + '][]" class="fgz-add-url" value="" placeholder="<?= Loc::getMessage("FG_MENUZ_PLACEHOLDER_ADD_URL") ?>" style="width:180px;">' +
+                        '<label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#666;">' +
+                '<input type="hidden" name="sec_item_slider_key[' + idx + '][]" value="' + sliderKey + '">' +
+                '<input type="checkbox" name="sec_item_slider[' + idx + '][' + sliderKey + ']" value="Y"> слайдер' +
+            '</label>' +
             '<span class="fgz-del" title="<?= Loc::getMessage("FG_MENUZ_DELETE_ITEM") ?>">✕</span>';
         return row;
     }
 
-        // Добавление корневого пункта
+    /**
+     * Добавляет строку нового корневого пункта при клике на кнопку.
+     *
+     * @return {void}
+     */
     (function initRootAdd(){
         var btn = document.getElementById('fgz-root-add');
         var wrap = document.getElementById('fgz-root-rows');
@@ -1694,13 +1739,19 @@ while ($g = $rs->Fetch()) {
         wrap.appendChild(block);
     });
 
-    // Автокомплит ссылок: полный список каталога (штатные + sitemap + manual)
-    // в едином формате. Источник помечается меткой в выпадающем списке.
+    // Автокомплит ссылок по всему каталогу: штатные, sitemap и manual, в едином формате
     var NATIVE = <?= json_encode(\FG\Menuz\Catalog::allItems(), JSON_UNESCAPED_UNICODE) ?>;
     window.__fgzNative = NATIVE;
     var nativeReady = true;
 
-    // Список штатных пунктов для автокомплита
+    /**
+     * Показывает выпадающий список каталога для автокомплита URL.
+     *
+     * @param {HTMLElement} box   Контейнер выпадающего списка.
+     * @param {string}      query Строка фильтрации.
+     *
+     * @return {void}
+     */
     function showNative(box, query) {
         query = (query || '').toString().trim().toLowerCase();
 
@@ -1854,6 +1905,47 @@ while ($g = $rs->Fetch()) {
             }, 500);
         });
     }
+})();
+</script>
+
+<script>
+(function(){
+    /**
+     * Отменяет нативные перехватчики формы (BX.validate, etc.)
+     * и привязывает кнопки save/apply к нативному submit.
+     *
+     * @return {void}
+     */
+    window.killInterceptors = function() {
+        var f = document.querySelector('form[method="post"]');
+        if (!f) return;
+        if (window.getEventListeners) {
+            var ev = getEventListeners(f);
+            if (ev.submit && ev.submit.length) {
+                ev.submit.forEach(function(l){
+                    try { f.removeEventListener('submit', l.listener, l.useCapture); } catch(e) {}
+                });
+            }
+        }
+        if (window.BX && BX.unbind) {
+            try { BX.unbind(f, 'submit'); } catch(e) {}
+        }
+        ['save','apply'].forEach(function(name){
+            var btn = f.querySelector('input[name="'+name+'"]');
+            if (!btn || btn.__fgzNativeBound) return;
+            btn.__fgzNativeBound = 1;
+            btn.type = 'button';
+            btn.addEventListener('click', function(e){
+                e.preventDefault();
+                e.stopPropagation();
+                killInterceptors();
+                HTMLFormElement.prototype.submit.call(f);
+            }, true);
+        });
+    }
+    if (window.BX && BX.ready) BX.ready(killInterceptors);
+    else setTimeout(killInterceptors, 500);
+    setTimeout(killInterceptors, 2000);
 })();
 </script>
 

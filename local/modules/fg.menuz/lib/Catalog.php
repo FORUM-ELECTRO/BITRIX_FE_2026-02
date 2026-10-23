@@ -33,10 +33,7 @@ final class Catalog
     }
 
     /**
-     * Сохраняет каталог.
-     *
-     * Пункты без id или названия и дубликаты отбрасываются, строки
-     * обрезаются. Вместе с данными сохраняется метка времени.
+     * Сохраняет каталог, отбрасывая пункты без id или названия и дубликаты.
      *
      * @param array $items  Пункты меню.
      * @param array $groups Группы меню.
@@ -73,21 +70,18 @@ final class Catalog
     }
 
     /**
-     * Добавляет пункты к существующему каталогу.
+     * Добавляет новые пункты к каталогу из sitemap или ручного ввода с дедупликацией.
      *
-     * Используется для дополнительных источников (sitemap, manual).
-     * Дедуп по id. Если id нет — генерируется по хэшу от link.
-     *
-     * @param array  $items  Новые пункты: [["link"=>..., "title"=>..., "source"=>...], ...]
-     * @param string $source Метка источника (например, "sitemap").
+     * @param array  $items  Новые пункты в формате ["link" => ..., "title" => ..., "source" => ...].
+     * @param string $source Метка источника, например "sitemap".
      *
      * @return int Количество добавленных пунктов.
      */
     public static function saveExtra(array $items, string $source = "extra"): int
     {
         $all = self::all();
-        $existing    = [];   // по id
-        $existingUrl = [];   // по link
+        $existing = [];
+        $existingUrl = [];
         if (isset($all["items"]) && is_array($all["items"])) {
             foreach ($all["items"] as $it) {
                 if (!empty($it["id"]))   $existing[$it["id"]] = true;
@@ -102,7 +96,7 @@ final class Catalog
             $title = mb_substr(trim((string)($it["title"] ?? "")), 0, 200);
             if ($link === "" || $title === "") continue;
 
-            // Дедуп по URL — не добавлять, если ссылка уже есть (в любом источнике)
+            // Пропустить, если ссылка уже есть в каталоге (любой источник)
             if (isset($existingUrl[$link])) continue;
 
             $id = preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)($it["id"] ?? ""));
@@ -140,7 +134,6 @@ final class Catalog
         return $added;
     }
 
-
     /**
      * Возвращает список штатных групп.
      *
@@ -153,12 +146,7 @@ final class Catalog
     }
 
     /**
-     * Возвращает ВСЕ пункты каталога в сыром виде: штатные + sitemap + manual.
-     *
-     * Единый источник истины для полного списка. Использовать только там,
-     * где нужен весь список: автокомплит URL в админке.
-     *
-     * Поддерживает и новый формат с обёрткой, и старый плоский массив.
+     * Возвращает все пункты каталога в сыром виде: штатные, sitemap и manual.
      *
      * @return array
      */
@@ -168,7 +156,7 @@ final class Catalog
         if (isset($all["items"]) && is_array($all["items"])) {
             return $all["items"];
         }
-        // fallback: если вдруг массив без обёртки
+        // Поддержка старого формата без обёртки "items"
         if (is_array($all) && isset($all[0])) {
             return $all;
         }
@@ -176,10 +164,7 @@ final class Catalog
     }
 
     /**
-     * Возвращает только "настоящие" штатные пункты — без sitemap и manual.
-     *
-     * Использовать во вкладках «Порядок», «Скрытые», «Шильдики» — там
-     * sitemap/manual-пункты не нужны.
+     * Возвращает только штатные пункты каталога, без sitemap и manual.
      *
      * @return array
      */
@@ -196,11 +181,7 @@ final class Catalog
     }
 
     /**
-     * Нормализует пункт меню к единому формату.
-     *
-     * Единый формат сущности меню: id, title, link, icon, counter, sort,
-     * source, flat. Принимает пункт из любого источника — каталога (link),
-     * разделов (url), корневых пунктов (url).
+     * Нормализует пункт меню из любого источника к единому формату.
      *
      * @param array  $it     Пункт в любом из форматов.
      * @param string $source Источник по умолчанию, если в пункте нет source.
@@ -227,13 +208,12 @@ final class Catalog
             "source"  => (string)($it["source"] ?? $source),
             "flat"    => true,
             "addUrl"  => (string)($it["add_url"] ?? ($it["addUrl"] ?? "")),
+            "slider"  => (!empty($it["slider"]) && $it["slider"] === "Y") ? "Y" : "N",
         ];
     }
 
     /**
-     * Все пункты каталога в едином формате (штатные + sitemap + manual).
-     *
-     * Использовать для автокомплита URL и любых мест, где нужен полный список.
+     * Возвращает все пункты каталога в едином формате.
      *
      * @return array
      */
@@ -246,9 +226,7 @@ final class Catalog
     }
 
     /**
-     * Только штатные пункты каталога в едином формате.
-     *
-     * Использовать во вкладках «Порядок», «Скрытые», «Шильдики».
+     * Возвращает только штатные пункты каталога в едином формате.
      *
      * @return array
      */
@@ -261,10 +239,7 @@ final class Catalog
     }
 
     /**
-     * Стабильный id корневого пункта.
-     *
-     * Если id не задан — генерируется по URL (fgz_root_<md5>), чтобы
-     * админка, order, root_items и DOM на публичке использовали один ключ.
+     * Возвращает стабильный id корневого пункта, генерируя его из хэша ссылки при отсутствии.
      *
      * @param array $it Пункт из root_items.
      *

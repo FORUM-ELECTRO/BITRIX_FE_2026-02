@@ -26,13 +26,6 @@ $arActivityDescription = [
         'OWN_NAME' => Loc::getMessage('COMPANY_SEARCH_SBER_CATEGORY'),
     ],
 
-    // Доступность для документов
-    //'FILTER' => [
-    //    'INCLUDE' => [
-    //       ['crm', 'CCrmDocumentCompany'],
-    //    ],
-    //],
-
     // Входные параметры активности
     'PROPERTIES' => [
         'INN' => [

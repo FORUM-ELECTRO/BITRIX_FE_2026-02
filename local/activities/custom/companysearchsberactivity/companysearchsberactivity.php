@@ -19,6 +19,12 @@ use Bitrix\Bizproc\Activity\PropertiesDialog;
 
 Loc::loadMessages(__FILE__);
 
+// Хранилище истории запросов (общее со страницей «Отчёт Сбер» / page/*)
+$sberHistoryFile = __DIR__ . '/page/sber_history.php';
+if (is_file($sberHistoryFile)) {
+    require_once $sberHistoryFile;
+}
+
 /**
  * Класс активности для работы с Sber API.
  */
@@ -29,6 +35,8 @@ class CBPCompanySearchSberActivity extends BaseActivity
 
     /**
      * Конструктор активности.
+     *
+     * Инициализирует свойства, их типы и загружает конфигурацию из config.php.
      *
      * @param string $name Имя активности.
      */
@@ -115,7 +123,10 @@ class CBPCompanySearchSberActivity extends BaseActivity
     /**
      * Основной метод выполнения активности.
      *
-     * @return ErrorCollection
+     * Читает ИНН/КПП, запрашивает индикаторы и PDF-отчёт, сохраняет
+     * результаты в свойства и пишет запись в историю запросов.
+     *
+     * @return ErrorCollection Ошибки выполнения (пусто при успехе).
      */
     protected function internalExecute(): ErrorCollection
     {
@@ -163,40 +174,40 @@ class CBPCompanySearchSberActivity extends BaseActivity
             $this->preparedProperties['FinanceDescription'] = $companyData['finance_description'] ?? '';
             $this->preparedProperties['FinanceHint'] = $companyData['finance_hint'] ?? '';
 
-        // Получение ссылки на отчёт
-        if (!empty($inn)) {
-            try {
-                $reportData = $this->getReportLink($inn, $kpp);
-                $this->preparedProperties['ReportLink'] = $reportData['link'] ?? '';
-                $this->preparedProperties['Random'] = $reportData['random'] ?? '';
-                $this->preparedProperties['FileId'] = $reportData['fileId'] ?? '';
+            // Получение ссылки на отчёт и сохранение PDF
+            if (!empty($inn)) {
+                try {
+                    $reportData = $this->getReportLink($inn, $kpp);
+                    $this->preparedProperties['ReportLink'] = $reportData['link'] ?? '';
+                    $this->preparedProperties['Random'] = $reportData['random'] ?? '';
+                    $this->preparedProperties['FileId'] = $reportData['fileId'] ?? '';
 
-                if (!empty($reportData['link'])) {
-                    $fileContent = $this->downloadFile($reportData['link']);
-                    
-                    // Создаём папку если её нет
-                    $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/upload/sber_reports/';
-                    if (!is_dir($uploadDir)) {
-                        mkdir($uploadDir, 0775, true);
+                    if (!empty($reportData['link'])) {
+                        $fileContent = $this->downloadFile($reportData['link']);
+
+                        // Создаём папку, если её нет
+                        $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/upload/sber_reports/';
+                        if (!is_dir($uploadDir)) {
+                            mkdir($uploadDir, 0775, true);
+                        }
+
+                        // Формируем имя файла с датой
+                        $fileName = 'report_' . $inn . '_' . date('Ymd_His') . '.pdf';
+                        $filePath = $uploadDir . $fileName;
+
+                        // Сохраняем файл
+                        file_put_contents($filePath, $fileContent);
+
+                        // Сохраняем ссылку на файл для публичного доступа
+                        $this->preparedProperties['ReportFile'] = '/upload/sber_reports/' . $fileName;
+                        $this->log(Loc::getMessage('COMPANY_SEARCH_LOG_PDF_SAVED') . $filePath);
                     }
-                    
-                    // Формируем имя файла с датой
-                    $fileName = 'report_' . $inn . '_' . date('Ymd_His') . '.pdf';
-                    $filePath = $uploadDir . $fileName;
-                    
-                    // Сохраняем файл
-                    file_put_contents($filePath, $fileContent);
-                    
-                    // Сохраняем ссылку на файл для публичного доступа
-                    $this->preparedProperties['ReportFile'] = 'https://portal.forumgroup.ru/upload/sber_reports/' . $fileName;
-                    $this->log('PDF сохранён: ' . $filePath);
+                } catch (\Exception $e) {
+                    $this->log(Loc::getMessage('COMPANY_SEARCH_LOG_REPORT_ERROR') . $e->getMessage());
+                    $this->preparedProperties['ReportLink'] = $reportData['link']
+                        ?? Loc::getMessage('COMPANY_SEARCH_ERROR_REPORT_LINK_FAIL');
                 }
-            } catch (\Exception $e) {
-                $this->log(Loc::getMessage('COMPANY_SEARCH_LOG_REPORT_ERROR') . $e->getMessage());
-                $this->preparedProperties['ReportLink'] = $reportData['link']
-                    ?? Loc::getMessage('COMPANY_SEARCH_ERROR_REPORT_LINK_FAIL');
             }
-        }
 
             $this->log(Loc::getMessage('COMPANY_SEARCH_LOG_DATA_RECEIVED'));
         } catch (\Exception $e) {
@@ -205,18 +216,81 @@ class CBPCompanySearchSberActivity extends BaseActivity
             $errors->add([new Error($e->getMessage())]);
         }
 
+        // Сохраняем результат в историю запросов (её показывает слайдер «Отчёт Сбер»)
+        $this->writeHistory($inn, $kpp);
+
         $this->log(Loc::getMessage('COMPANY_SEARCH_LOG_FINISH'));
 
         return $errors;
     }
 
     /**
+     * Пишет результат текущего выполнения в таблицу истории запросов.
+     *
+     * Таблица создаётся автоматически (см. page/sber_history.php).
+     *
+     * @param string      $inn ИНН.
+     * @param string|null $kpp КПП.
+     *
+     * @return void
+     */
+    private function writeHistory(string $inn, ?string $kpp = null): void
+    {
+        if (!function_exists('sber_history_add')) {
+            return;
+        }
+
+        $userId = 0;
+        global $USER;
+        if (is_object($USER) && $USER->IsAuthorized()) {
+            $userId = (int)$USER->GetID();
+        }
+
+        $error = (string)($this->preparedProperties['ErrorMessage'] ?? '');
+
+        if ($error !== '') {
+            sber_history_add([
+                'inn'           => $inn,
+                'kpp'           => $kpp,
+                'status'        => 'error',
+                'error_message' => $error,
+                'user_id'       => $userId,
+            ]);
+            return;
+        }
+
+        // Отчёт: приоритет сохранённому PDF, иначе — исходная ссылка Сбера
+        $reportFile = (string)($this->preparedProperties['ReportFile'] ?? '');
+        if ($reportFile === '') {
+            $reportFile = (string)($this->preparedProperties['ReportLink'] ?? '');
+        }
+
+        sber_history_add([
+            'inn'                => (string)($this->preparedProperties['INN'] ?? $inn),
+            'kpp'                => (string)($this->preparedProperties['KPP'] ?? $kpp),
+            'rating_level'       => (string)($this->preparedProperties['RatingLevel'] ?? ''),
+            'rating_name'        => (string)($this->preparedProperties['RatingName'] ?? ''),
+            'rating_description' => (string)($this->preparedProperties['RatingDescription'] ?? ''),
+            'risk_level'         => (string)($this->preparedProperties['RiskLevel'] ?? ''),
+            'state_level'        => (string)($this->preparedProperties['StateLevel'] ?? ''),
+            'finance_level'      => (string)($this->preparedProperties['FinanceLevel'] ?? ''),
+            'report_file'        => $reportFile,
+            'status'             => 'success',
+            'user_id'            => $userId,
+        ]);
+    }
+
+    /**
      * Получение данных о компании через API Сбера (метод traffic-lights).
      *
-     * @param string $inn ИНН.
-     * @param string $kpp КПП.
-     * @return array
-     * @throws \Exception
+     * При ответе 401 один раз обновляет токен и повторяет запрос.
+     *
+     * @param string      $inn ИНН.
+     * @param string|null $kpp КПП (для ИП не передаётся).
+     *
+     * @return array Массив с rating_*, risk_*, state_*, finance_* полями.
+     *
+     * @throws \Exception При CURL/HTTP-ошибке или отсутствии данных.
      */
     private function getCompanyDataFromSber(string $inn, ?string $kpp = null): array
     {
@@ -373,10 +447,12 @@ class CBPCompanySearchSberActivity extends BaseActivity
     /**
      * Получение ссылки на PDF-отчёт.
      *
-     * @param string $inn ИНН.
+     * @param string      $inn ИНН.
      * @param string|null $kpp КПП (может быть null для ИП).
-     * @return array
-     * @throws \Exception
+     *
+     * @return array{link: string, random: string, fileId: string}
+     *
+     * @throws \Exception При CURL/HTTP-ошибке или отсутствии ссылки в ответе.
      */
     private function getReportLink(string $inn, ?string $kpp = null): array
     {
@@ -454,8 +530,10 @@ class CBPCompanySearchSberActivity extends BaseActivity
      * Скачивание PDF-файла по ссылке.
      *
      * @param string $fileUrl Полная ссылка на файл.
-     * @return string Бинарное содержимое файла.
-     * @throws \Exception
+     *
+     * @return string Бинарное содержимое файла (пусто при HTTP 204).
+     *
+     * @throws \Exception При CURL/HTTP-ошибке.
      */
     private function downloadFile(string $fileUrl): string
     {
@@ -484,10 +562,10 @@ class CBPCompanySearchSberActivity extends BaseActivity
         curl_close($ch);
 
         // Логируем результат
-        $this->log('HTTP код: ' . $httpCode);
-        $this->log('Размер ответа: ' . strlen($response));
+        $this->log(Loc::getMessage('COMPANY_SEARCH_LOG_HTTP_CODE') . $httpCode);
+        $this->log(Loc::getMessage('COMPANY_SEARCH_LOG_RESPONSE_SIZE') . strlen($response));
         if ($httpCode !== 200) {
-            $this->log('Тело ответа (первые 500 символов): ' . substr($response, 0, 500));
+            $this->log(Loc::getMessage('COMPANY_SEARCH_LOG_RESPONSE_BODY') . substr($response, 0, 500));
         }
 
         if ($error) {
@@ -495,7 +573,7 @@ class CBPCompanySearchSberActivity extends BaseActivity
         }
 
         if ($httpCode === 204) {
-            $this->log('HTTP 204: Нет данных для формирования отчёта');
+            $this->log(Loc::getMessage('COMPANY_SEARCH_LOG_NO_REPORT_DATA'));
             return '';
         }
 
@@ -507,7 +585,12 @@ class CBPCompanySearchSberActivity extends BaseActivity
     }
 
     /**
-     * Обновление токена
+     * Обновление пары токенов по refresh_token.
+     *
+     * Обновляет access_token/refresh_token во внутреннем конфиге;
+     * при отсутствии токена в ответе молча выходит.
+     *
+     * @return void
      */
     private function refreshToken()
     {
@@ -541,7 +624,8 @@ class CBPCompanySearchSberActivity extends BaseActivity
     /**
      * Карта свойств для диалога настройки в конструкторе БП.
      *
-     * @param PropertiesDialog|null $dialog
+     * @param PropertiesDialog|null $dialog Диалог свойств (не используется).
+     *
      * @return array[]
      */
     public static function getPropertiesDialogMap(?PropertiesDialog $dialog = null): array

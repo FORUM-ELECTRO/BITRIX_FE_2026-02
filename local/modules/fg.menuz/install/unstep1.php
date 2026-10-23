@@ -1,4 +1,13 @@
-<?if(!check_bitrix_sessid()) return;?>
+<?php
+
+/**
+ * Шаг 1 удаления модуля fg.menuz: вопрос о сохранении настроек.
+ *
+ * @package FG\Menuz
+ */
+
+if (!check_bitrix_sessid()) return;
+?>
 <form action="<?=$APPLICATION->GetCurPage(); ?>">
     <?=bitrix_sessid_post(); ?>
     <input type="hidden" name="step" value="2">
