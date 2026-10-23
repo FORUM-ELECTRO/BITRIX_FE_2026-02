@@ -35,10 +35,7 @@ final class Sections
     }
 
     /**
-     * Сохраняет разделы меню.
-     *
-     * Пустые разделы и пункты без названия или ссылки отбрасываются,
-     * строки обрезаются, служебные поля чистятся.
+     * Сохраняет разделы меню, отбрасывая пустые разделы и пункты без названия или ссылки.
      *
      * @param array $sections Массив разделов из админ-формы.
      *
@@ -68,6 +65,7 @@ final class Sections
                     "counter" => mb_substr(preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)($it["counter"] ?? "")), 0, 100),
                     "sort"    => ($sortVal === "" || $sortVal === null) ? null : (int)$sortVal,
                     "add_url" => mb_substr(trim((string)($it["add_url"] ?? "")), 0, 500),
+                    "slider"  => ($it["slider"] ?? "") === "Y" ? "Y" : "N",
                 ];
             }
             $isNative = !empty($s["native"]);
@@ -77,7 +75,6 @@ final class Sections
                 "icon"   => trim((string)($s["icon"] ?? "")),
                 "items"  => $items,
                 "native" => $isNative ?: null,
-                // "personal" => !empty($s["personal"]) ?: null,
             ];
         }
         Settings::set("sections", $clean);

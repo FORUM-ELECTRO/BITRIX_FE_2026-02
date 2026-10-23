@@ -1,4 +1,11 @@
 <?php
+
+/**
+ * Приёмник ссылок, собранных со страницы карты сайта (модуль fg.menuz).
+ *
+ * @package FG\Menuz
+ */
+
 require_once($_SERVER["DOCUMENT_ROOT"] . "/bitrix/modules/main/include/prolog_admin_before.php");
 
 use Bitrix\Main\Loader;
@@ -7,6 +14,7 @@ global $USER;
 
 header('Content-Type: application/json; charset=utf-8');
 
+// Ответ отдаётся в JSON; поле "err" различает причины отказа.
 if (!Loader::includeModule("fg.menuz")) {
     echo json_encode(["ok" => false, "err" => "module"]);
     exit;
@@ -17,6 +25,7 @@ if (!$USER->IsAdmin()) {
     exit;
 }
 
+// sessid передаётся в query, поэтому check_bitrix_sessid() достаточен.
 if (!check_bitrix_sessid()) {
     echo json_encode(["ok" => false, "err" => "sessid"]);
     exit;

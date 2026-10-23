@@ -1,4 +1,11 @@
 <?php
+
+/**
+ * Завершение установки модуля fg.menuz.
+ *
+ * @package FG\Menuz
+ */
+
 if (!check_bitrix_sessid()) return;
 global $APPLICATION;
 echo CAdminMessage::ShowNote(GetMessage("FG_MENUZ_INSTALL_DONE"));

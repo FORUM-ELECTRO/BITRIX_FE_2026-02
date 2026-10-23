@@ -113,9 +113,7 @@ final class Renderer
         $badges = Settings::get("badges", []);
         if (!is_array($badges)) $badges = [];
 
-        // Корневые пункты — вне разделов.
-        // Нормализуем к единому формату (url -> link) и гарантируем стабильный id,
-        // чтобы order, root_items и DOM на публичке использовали один ключ.
+        // Корневые пункты вне разделов: единый формат пункта и стабильный id
         $rootItemsRaw = Settings::get("root_items", []);
         if (!is_array($rootItemsRaw)) $rootItemsRaw = [];
         $rootItems = [];
@@ -149,28 +147,57 @@ final class Renderer
             exit;
         }
 
-        // Личные ссылки пользователя (b_user_option.intranet.left_menu_standard_items_S1).
-        // CUserOptions::GetOption отдаёт уже десериализованный массив:
-        //   [ID => ["TEXT"=>..., "LINK"=>..., "ID"=>...]]  — личная ссылка (ID может быть строкой!)
-        //   ["menu_xxx" => "/url/"]                        — переопределение штатного, пропускаем
+        // Личные ссылки пользователя: left_menu_self_items_s1 (новый) или left_menu_standard_items_s1 (старый)
         $selfItems = [];
         if ($userId > 0) {
-            $selfRaw = \CUserOptions::GetOption("intranet", "left_menu_standard_items_S1", [], $userId);
+            $selfKeys = ["left_menu_self_items_s1", "left_menu_standard_items_s1"];
+            $selfRaw = [];
+            foreach ($selfKeys as $optKey) {
+                $candidate = \CUserOptions::GetOption("intranet", $optKey, [], $userId);
+                if (is_array($candidate) && $candidate) {
+                    $selfRaw = $candidate;
+                    break;
+                }
+            }
+            // ID пунктов, которые уже в SECTIONS — не тащить в «Избранное»
+            $sectionItemIds = [];
+            if (isset($sections) && is_array($sections)) {
+                foreach ($sections as $__s) {
+                    foreach (($__s["items"] ?? []) as $__it) {
+                        if (!empty($__it["id"])) {
+                            $sectionItemIds[(string)$__it["id"]] = true;
+                        }
+                    }
+                }
+            }
+
             if (is_array($selfRaw)) {
                 foreach ($selfRaw as $sid => $val) {
                     $sid = (string)$sid;
-                    // штатные переопределения menu_* — пропускаем
                     if (preg_match('/^menu_/i', $sid)) continue;
-                    // личная ссылка — только если значение это массив с непустым LINK
                     if (!is_array($val)) continue;
                     if (empty($val["LINK"])) continue;
                     $sid = (string)($val["ID"] ?? $sid);
                     if ($sid === "") continue;
+
+                    // пункт уже в SECTIONS — не тащить
+                    if (isset($sectionItemIds[$sid])) continue;
+
                     $selfItems[] = $sid;
                 }
             }
         }
         $selfItems = array_values(array_unique($selfItems));
+
+        // ID кастомных разделов Битрикса (b_intranet_custom_section_page)
+        $customSectionIds = [];
+        global $DB;
+        if (is_object($DB)) {
+            $rsCS = $DB->Query("SELECT ID FROM b_intranet_custom_section_page");
+            while ($rCS = $rsCS->Fetch()) {
+                $customSectionIds[] = (string)$rCS["ID"];
+            }
+        }
 
         $json = Json::encode(
             [
@@ -184,6 +211,7 @@ final class Renderer
                 "badges"     => $badges,
                 "selfItems"  => $selfItems,
                 "rootItems"  => $rootItems,
+                "customSectionIds" => $customSectionIds,
             ],
             JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE
         );
@@ -231,8 +259,7 @@ final class Renderer
         $css .= '#menu-items-block #bx_left_menu_fgz_personal{background-color:rgba(100,180,255,0.10);border-radius:6px;}';
         $css .= '#menu-items-block #bx_left_menu_fgz_personal:hover{background-color:rgba(100,180,255,0.16);}';
         $css .= '#menu-items-block #bx_left_menu_fgz_personal.menu-item-active{background-color:rgba(100,180,255,0.20);}';
-        // Анти-FOUC: меню скрыто, но CSS-анимация покажет его через 1.5с,
-        // даже если JS упадёт. JS снимает гард раньше — через .fgz-ready.
+        // Анти-FOUC: меню скрыто, но CSS-анимация покажет его через 1.5с, даже если JS не выполнится
         $css .= '#menu-items-block .menu-items-body-inner{visibility:hidden;animation:fgzPatReveal 0s linear 1500ms forwards;}';
         $css .= '#menu-items-block.fgz-ready .menu-items-body-inner{visibility:visible;animation:none;}';
         $css .= '@keyframes fgzPatReveal{to{visibility:visible;}}';
@@ -295,10 +322,7 @@ final class Renderer
     }
 
     /**
-     * JS-коллектор штатных пунктов меню.
-     *
-     * Собирает со страницы пункты и группы и отправляет их на
-     * /bitrix/admin/fg_menuz_collect.php.
+     * Возвращает JS-коллектор штатных пунктов меню.
      *
      * @return string
      */
@@ -306,6 +330,13 @@ final class Renderer
     {
         return <<<'JS'
 (function () {
+    /**
+     * Отправляет собранный каталог на сервер и закрывает вкладку.
+     *
+     * @param {Object} payload Тело запроса: items и groups.
+     *
+     * @return {void}
+     */
     function send(payload) {
         var xhr = new XMLHttpRequest();
         xhr.open('POST', '/bitrix/admin/fg_menuz_collect.php', true);
@@ -320,6 +351,13 @@ final class Renderer
         xhr.send(JSON.stringify(payload));
     }
 
+    /**
+     * Ждёт #menu-items-block и собирает с него пункты и группы.
+     *
+     * @param {number} tries Количество сделанных попыток.
+     *
+     * @return {void|number}
+     */
     function run(tries) {
         var root = document.getElementById('menu-items-block');
         if (!root) {
@@ -398,6 +436,13 @@ JS;
     {
         return <<<'JS'
 (function () {
+    /**
+     * Отправляет ссылки с карты сайта на сервер и закрывает вкладку.
+     *
+     * @param {Object} payload Тело запроса: items.
+     *
+     * @return {void}
+     */
     function send(payload) {
         var sessid = (window.BX && BX.bitrix_sessid) ? BX.bitrix_sessid() : '';
         var xhr = new XMLHttpRequest();
@@ -413,6 +458,13 @@ JS;
         xhr.send(JSON.stringify(payload));
     }
 
+    /**
+     * Ждёт <main> и выписывает из него все пригодные для меню ссылки.
+     *
+     * @param {number} tries Количество сделанных попыток.
+     *
+     * @return {void|number}
+     */
     function run(tries) {
         var root = document.querySelector('main');
         if (!root) {
@@ -479,8 +531,23 @@ JS;
     var BADGES          = (CFG.badges && typeof CFG.badges === 'object') ? CFG.badges : {};
     var SELF_ITEMS      = Array.isArray(CFG.selfItems) ? CFG.selfItems : [];
     var ROOT_ITEMS      = Array.isArray(CFG.rootItems) ? CFG.rootItems : [];
+    var SLIDER_URLS = {};
+    SECTIONS.forEach(function(sec){
+        (sec.items || []).forEach(function(it){
+            if (it.slider === 'Y' && it.link) {
+                var u = it.link.indexOf('sp:') === 0 ? it.link.slice(3) : it.link;
+                SLIDER_URLS[u] = true;
+            }
+        });
+    });
+    var CUSTOM_SECTION_IDS = Array.isArray(CFG.customSectionIds) ? CFG.customSectionIds : [];
 
     // Разовая очистка старых ключей без userId (fgz-mode-XXX)
+    /**
+     * Очищает старые ключи fgz-mode-fgz_ и fgz-mode-\d+ из localStorage.
+     *
+     * @return {void}
+     */
     (function cleanupOldModeKeys() {
         try {
             Object.keys(localStorage).forEach(function(k){
@@ -494,8 +561,7 @@ JS;
         } catch (e) {}
     })();
 
-    // Неавторизованный заход (страница логина/логаута) — сбрасываем состояние
-    // свёрнутости, чтобы при следующей авторизации все разделы были свёрнуты.
+    // Страница логина/логаута — сбросить состояние свёрнутости из sessionStorage
     if (!USER_ID) {
         try {
             Object.keys(sessionStorage).forEach(function(k){
@@ -504,7 +570,18 @@ JS;
         } catch (e) {}
     }
 
+    /**
+     * Возвращает корень левого меню на странице.
+     *
+     * @return {HTMLElement|null}
+     */
     function block() { return document.getElementById('menu-items-block'); }
+
+    /**
+     * Возвращает контейнер <ul> с пунктами верхнего уровня.
+     *
+     * @return {HTMLElement|null}
+     */
     function menuUl() {
         var b = block();
         if (!b) return null;
@@ -512,8 +589,24 @@ JS;
             || b.querySelector('ul.menu-items')
             || b.querySelector('.menu-items-body-inner');
     }
+
+    /**
+     * Убирает из строки символы, недопустимые в data-id.
+     *
+     * @param {string} v Исходное значение.
+     *
+     * @return {string}
+     */
     function safeId(v) { return ('' + v).replace(/[^a-zA-Z0-9_\-]/g, ''); }
 
+    /**
+     * Добавляет на пункт кнопку «плюс» с переходом по addUrl.
+     *
+     * @param {HTMLElement} li    Элемент пункта.
+     * @param {string}      addUrl Ссылка кнопки или код с префиксом js:/sp:.
+     *
+     * @return {void}
+     */
     function addPlus(li, addUrl) {
         if (!li || !addUrl) return;
         var old = li.querySelector('.menu-item-plus');
@@ -553,7 +646,7 @@ JS;
                 if (window.BX && BX.SidePanel && BX.SidePanel.Instance) {
                     BX.SidePanel.Instance.open(url, {
                         cacheable: false,
-                        allowChangeHistory: true,
+                        allowChangeHistory: false,
                         width: 1000,
                         events: {
                             onLoad: function(event){
@@ -577,7 +670,7 @@ JS;
             if (window.BX && BX.SidePanel && BX.SidePanel.Instance) {
                 BX.SidePanel.Instance.open(addUrl, {
                     cacheable: false,
-                    allowChangeHistory: true,
+                    allowChangeHistory: false,
                     width: 1000
                 });
                 return;
@@ -590,15 +683,68 @@ JS;
         else li.appendChild(plus);
     }
 
-    // Единый ключ пункта в DOM: приоритет у it.id (тот же, что в order,
-    // root_items и разделах). Без id — фолбэк по ссылке/названию.
+    /**
+     * Открывает URL в SidePanel по ссылке с префиксом "sp:".
+     *
+     * @param {string} spLink Ссылка с префиксом "sp:" и необязательным "|label:".
+     *
+     * @return {void}
+     */
+    function openSidePanel(spLink) {
+        var url = spLink;
+        var label = null;
+        if (spLink && spLink.indexOf('sp:') === 0) url = spLink.slice(3);
+        var sep = url.indexOf('|label:');
+        if (sep !== -1) {
+            label = url.slice(sep + 7);
+            url = url.slice(0, sep);
+        }
+        if (window.BX && BX.SidePanel && BX.SidePanel.Instance) {
+            var opts = {
+                cacheable: false,
+                allowChangeHistory: false,
+                width: 1000
+            };
+            if (label) opts.label = { text: label, color: '#008000' };
+            BX.SidePanel.Instance.open(url, opts);
+            return;
+        }
+        window.location.href = url;
+    }
+
+    /**
+     * Перехватывает клик по ссылке с префиксом "sp:" и открывает слайдер.
+     *
+     * @param {HTMLElement} li   Элемент пункта.
+     * @param {string}      link Ссылка пункта.
+     *
+     * @return {void}
+     */
+    function bindSpNav(li, link) {
+        if (!li || !link || link.indexOf('sp:') !== 0) return;
+        if (li.hasAttribute && li.hasAttribute('data-fgz-sp')) return;
+        var a = li.querySelector('a.menu-item-link');
+        if (!a) return;
+        li.setAttribute('data-fgz-sp', '1');
+        a.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            openSidePanel(link);
+        }, true);
+    }
+
+    /**
+     * Возвращает ключ пункта в DOM: it.id либо фолбэк fgz_custom_<ссылка или название>.
+     *
+     * @param {Object} it Пункт меню.
+     *
+     * @return {string}
+     */
     function itemDataId(it) {
         return it.id ? safeId(it.id) : ('fgz_custom_' + safeId(it.link || it.title));
     }
 
-    // Раз в сессию браузера (при новом заходе) чистим старые ключи localStorage.
-    // Само состояние свёрнутости хранится в sessionStorage — см. savedMode(),
-    // поэтому на новой вкладке/сессии все разделы всегда свёрнуты.
+    // При новой сессии браузера чистим старые ключи свёрнутости из localStorage
     (function resetModesOnce() {
         try {
             if (!sessionStorage.getItem('fgz-session-init')) {
@@ -610,10 +756,24 @@ JS;
         } catch (e) {}
     })();
 
+    /**
+     * Возвращает стабильный ключ пункта в хранилище с учётом userId.
+     *
+     * @param {string} id Ключ раздела.
+     *
+     * @return {string}
+     */
     function modeKey(id) {
         return 'fgz-mode-' + USER_ID + '-' + id;
     }
 
+    /**
+     * Возвращает сохранённое состояние свёрнутости раздела.
+     *
+     * @param {string} id Ключ раздела.
+     *
+     * @return {string} "collapsed" или "expanded".
+     */
     function savedMode(id) {
         try {
             var stored = sessionStorage.getItem(modeKey(id));
@@ -623,6 +783,15 @@ JS;
         } catch (e) { return 'collapsed'; }
     }
 
+    /**
+     * Применяет иконку к элементу: ui-icon-set, data:URI, URL, SVG или первая буква.
+     *
+     * @param {HTMLElement} iconEl Контейнер иконки.
+     * @param {string}      icon   Значение иконки из настроек.
+     * @param {string}      title  Название пункта для буквы-фолбэка.
+     *
+     * @return {void}
+     */
     function applyIcon(iconEl, icon, title) {
         icon = (icon || '').trim();
         title = (title || '').trim();
@@ -697,6 +866,13 @@ JS;
         iconEl.textContent = title ? title.charAt(0).toUpperCase() : '';
     }
 
+    /**
+     * Строит каркас раздела: заголовок-кнопку и контейнер для пунктов.
+     *
+     * @param {Object} sec Раздел из конфигурации.
+     *
+     * @return {{header: HTMLElement, content: HTMLElement, innerUl: HTMLElement}}
+     */
     function buildShell(sec) {
         var header = document.createElement('li');
         header.id = 'bx_left_menu_' + sec.id;
@@ -768,6 +944,13 @@ JS;
         return { header: header, content: content, innerUl: innerUl };
     }
 
+    /**
+     * Следит за aria-expanded заголовка и сохраняет состояние свёрнутости.
+     *
+     * @param {HTMLElement} header Заголовок раздела.
+     *
+     * @return {void}
+     */
     function watchCollapse(header) {
         if (header.__fgzWatch) return;
         header.__fgzWatch = 1;
@@ -776,6 +959,11 @@ JS;
         var btn = header.querySelector('.menu-item-link');
         if (!btn) return;
 
+        /**
+         * Синхронизирует data-collapse-mode заголовка с aria-expanded кнопки.
+         *
+         * @return {void}
+         */
         function sync() {
             var exp = btn.getAttribute('aria-expanded');
             if (exp !== 'true' && exp !== 'false') return;
@@ -788,6 +976,13 @@ JS;
         sync();
     }
 
+    /**
+     * Регистрирует заголовок раздела в штатном контроллере пунктов меню Bitrix24.
+     *
+     * @param {HTMLElement} header Заголовок раздела.
+     *
+     * @return {void}
+     */
     function registerNative(header) {
         if (header.__fgzReg) return;
         var ic = null;
@@ -810,6 +1005,13 @@ JS;
         }
     }
 
+    /**
+     * Вешает fallback-обработчик сворачивания на заголовок раздела.
+     *
+     * @param {HTMLElement} header Заголовок раздела.
+     *
+     * @return {void}
+     */
     function bindFallback(header) {
         if (header.__fgzReg || header.__fgzToggle) return;
         header.__fgzToggle = 1;
@@ -825,13 +1027,22 @@ JS;
         }, true);
     }
 
+    /**
+     * Создаёт DOM-элемент кастомного пункта меню.
+     *
+     * @param {Object} it Пункт меню в едином формате.
+     *
+     * @return {HTMLElement}
+     */
     function makeCustom(it) {
         var li = document.createElement('li');
         li.className = 'menu-item-block fgz-custom';
         li.setAttribute('data-status', 'show');
         li.setAttribute('data-id', itemDataId(it));
         li.setAttribute('data-role', 'item');
-        li.setAttribute('data-type', 'custom');
+        var __isMenu = (it && it.id && String(it.id).indexOf('menu_') === 0 && it.counter);
+        li.setAttribute('data-type', __isMenu ? 'default' : 'custom');
+        if (__isMenu) li.classList.add('menu-item-with-index');
         li.setAttribute('data-storage', '');
         li.setAttribute('data-link', it.link || '');
         li.setAttribute('data-all-links', '');
@@ -839,9 +1050,11 @@ JS;
         li.setAttribute('data-new-page', 'N');
 
         if (it.counter) li.setAttribute('data-counter-id', it.counter);
+        // Поддержка ссылки-слайдера: "sp:/url" — открываем в SidePanel
+        var spNavUrl = (it.link && it.link.indexOf('sp:') === 0) ? it.link.slice(3) : null;
         var a = document.createElement('a');
         a.className = 'menu-item-link';
-        a.href = it.link || '#';
+        a.href = spNavUrl || it.link || '#';
 
         var iconBox = document.createElement('span');
         iconBox.className = 'menu-item-icon-box';
@@ -883,9 +1096,15 @@ JS;
         }
 
         li.appendChild(a);
+        if (spNavUrl) bindSpNav(li, it.link);
         return li;
     }
 
+    /**
+     * Скрывает штатные пункты и/или группы согласно настройкам hideNative.
+     *
+     * @return {void}
+     */
     function hideNative() {
         if (!HIDE_NAT && !HIDE_NAT_GROUPS) return;
 
@@ -926,6 +1145,11 @@ JS;
 
     var obs = null, pending = false;
 
+    /**
+     * Перестраивает меню по конфигурации: разделы, порядок, шильдики, избранное.
+     *
+     * @return {void}
+     */
     function apply() {
         var ul = menuUl();
         if (!ul) return;
@@ -935,8 +1159,7 @@ JS;
         if (obs) obs.disconnect();
         if (window.console) console.time('apply');
         try {
-            // Скрываем пункты из списка hidden
-            // Ищем по всему #menu-items-block — включая li, уже перенесённые в разделы
+            // Скрытые пункты — по всему #menu-items-block, включая уже перенесённые в разделы
             if (HIDDEN.length) {
                 var bRoot = block();
                 if (bRoot) {
@@ -1036,6 +1259,7 @@ JS;
                             }
                             nativeUl.appendChild(nli);
                             addPlus(nli, nit.addUrl || '');
+                            bindSpNav(nli, nit.link);
                         } else {
                             var ncid = itemDataId(nit);
                             if (!nativeUl.querySelector('li[data-id="' + safeId(ncid) + '"]')) {
@@ -1065,8 +1289,14 @@ JS;
                 var innerUl = content.querySelector('ul.menu-item-group-more-ul');
                 if (!innerUl) continue;
 
-                // Bitrix registerItem вешает jsDD на li и потом перетаскивает их
-                // по b_user_option.menu_sort. Отключаем drag для всех li в разделе.
+                // Bitrix registerItem перетаскивает li по menu_sort — отключаем jsDD для всех li в разделе
+                /**
+                 * Отключает jsDD-перетаскивание для всех li внутри контейнера раздела.
+                 *
+                 * @param {HTMLElement} innerUlLocal Контейнер innerUl.
+                 *
+                 * @return {void}
+                 */
                 (function disableDragInside(innerUlLocal){
                     if (!window.jsDD || typeof jsDD.unregisterObject !== 'function') return;
                     if (!innerUlLocal) return;
@@ -1137,6 +1367,7 @@ JS;
 
                         innerUl.appendChild(li);
                         addPlus(li, it.addUrl || '');
+                        bindSpNav(li, it.link);
                     } else {
                         var cid = itemDataId(it);
                         if (innerUl.querySelector('li[data-id="' + safeId(cid) + '"]')) continue;
@@ -1159,6 +1390,7 @@ JS;
                     if (li) {
                         innerUl.appendChild(li);
                         addPlus(li, it.addUrl || '');
+                        bindSpNav(li, it.link);
                     }
                 });
 
@@ -1202,9 +1434,11 @@ JS;
                 }
             }
 
-            // Сворачиваем штатные группы Bitrix (Совместная работа, Приложения)
-            // по состоянию сессии: новая вкладка/сессия — всё свёрнуто,
-            // переключение внутри сессии сохраняется в sessionStorage.
+            /**
+             * Сворачивает штатные группы Bitrix по состоянию из sessionStorage.
+             *
+             * @return {void}
+             */
             (function applyNativeGroupModes(){
                 var b = block();
                 if (!b) return;
@@ -1221,7 +1455,11 @@ JS;
                 });
             })();
 
-            // Отключаем drag&drop у всех пунктов меню
+            /**
+             * Отключает drag&drop у всех пунктов меню через jsDD.
+             *
+             * @return {void}
+             */
             (function disableDrag(){
                 if (!window.jsDD || typeof jsDD.unregisterObject !== 'function') return;
                 var b = block();
@@ -1231,7 +1469,11 @@ JS;
                 });
             })();
 
-            // Шильдики для КОРНЕВЫХ пунктов
+            /**
+             * Расставляет шильдики по корневым пунктам меню.
+             *
+             * @return {void}
+             */
             (function applyBadgesToRoot() {
                 var b = block();
                 if (!b) return;
@@ -1273,10 +1515,7 @@ JS;
                 });
             })();
 
-            // === Корневые пункты вне разделов ===
-            // Создаём недостающие li и обновляем существующие. Позицию задаёт
-            // блок ORDER ниже — здесь li не переставляем, чтобы не ломать
-            // уже применённую сортировку и не плодить дубли на каждом apply().
+            // Корневые пункты вне разделов — создаём/обновляем li, позицию задаёт ORDER
             if (ROOT_ITEMS.length > 0) {
                 try {
                     ROOT_ITEMS.forEach(function(it){
@@ -1294,15 +1533,14 @@ JS;
                                 var ic = li.querySelector('.menu-item-icon-box > span') || li.querySelector('.menu-item-icon');
                                 if (ic) applyIcon(ic, it.icon, it.title);
                             }
-                            // Возвращаем в корень только если li не лежит в корне
-                            // и не находится внутри раздела (menu-item-group-more).
-                            // Позицию в корне задаёт ORDER — здесь не переставляем.
+                            // В корень возвращаем только если li не в корне и не внутри раздела
                             if (li.parentNode !== ul && !li.closest('.menu-item-group-more')) {
                                 ul.appendChild(li);
                             }
                             return;
                         }
                         var newLi = makeCustom(it);
+                        bindSpNav(newLi, it.link);
                         newLi.classList.add('fgz-root-item');
                         newLi.setAttribute('data-fgz-root', '1');
                         ul.appendChild(newLi);
@@ -1328,17 +1566,35 @@ JS;
 
                     sorted.forEach(function(item){
                         if (item.type === 'section') {
+                            // «Избранное» — всегда внизу, ORDER его не трогает
+                            if (String(item.id) === 'fgz_personal') return;
                             // находим li раздела (header + content)
                             var secId = item.id;
                             var header = document.getElementById('bx_left_menu_' + secId)
                                       || document.getElementById('bx_left_menu_fgz_' + secId)
                                       || ulRoot.querySelector('li.fgz-section[data-fgz-id="' + secId + '"]')
                                       || ulRoot.querySelector('li.fgz-section[data-fgz-id="fgz_' + secId + '"]')
-                                      || ulRoot.querySelector('li.menu-item-group[data-id="' + secId + '"]');
+                                      || document.querySelector('#menu-items-block li.menu-item-group[data-id="' + secId + '"]');
                             if (!header) return;
-                            var content = header.nextElementSibling;
-                            while (content && !content.classList.contains('menu-item-group-more')) {
-                                content = content.nextElementSibling;
+
+                            // Content ищем строго по data-group-id, чтобы не захватить чужой контейнер
+                            var content = null;
+                            var id1 = header.getAttribute('data-fgz-id');
+                            var id2 = header.getAttribute('data-id');
+                            var candidateIds = [];
+                            if (id1) candidateIds.push(id1);
+                            if (id2) candidateIds.push(id2);
+                            if (secId) candidateIds.push(secId);
+
+                            for (var ci = 0; ci < candidateIds.length && !content; ci++) {
+                                content = document.querySelector('#menu-items-block li.menu-item-group-more[data-group-id="' + candidateIds[ci] + '"]');
+                            }
+                            // фолбэк — если ничего не нашли, берём nextElementSibling как раньше
+                            if (!content) {
+                                content = header.nextElementSibling;
+                                while (content && !content.classList.contains('menu-item-group-more')) {
+                                    content = content.nextElementSibling;
+                                }
                             }
                             if (!content) return;
                             ulRoot.appendChild(header);
@@ -1379,7 +1635,7 @@ JS;
 
             hideNative();
 
-            // === Раздел «Избранное»: личные ссылки пользователя ===
+            // Раздел «Избранное»: личные ссылки пользователя
             if (SELF_ITEMS.length > 0) {
                 try {
                     var personalHeader = document.getElementById('bx_left_menu_fgz_personal');
@@ -1420,10 +1676,20 @@ JS;
                             if (li2.classList.contains('fgz-section')) continue;
                             if (li2.classList.contains('fgz-custom')) continue;
                             if (li2.classList.contains('fgz-moved')) continue;
+                            if (li2.classList.contains('fgz-root-item')) continue;
+                            if (li2.getAttribute('data-fgz-root') === '1') continue;
                             if (id2 === 'main_page') continue;
                             if (id2 === 'fgz_personal') continue;
                             if (id2.indexOf('fgz_') === 0) continue;
                             if (id2.indexOf('menu_') === 0) continue;
+
+                            // скрытые в модуле — не тащить в «Избранное»
+                            if (HIDDEN.indexOf(id2) !== -1) continue;
+                            var linkAttr2 = li2.getAttribute('data-link') || '';
+                            if (linkAttr2 && HIDDEN.indexOf(linkAttr2) !== -1) continue;
+
+                            // кастомные разделы Битрикса (не наши) — не тащить
+                            if (CUSTOM_SECTION_IDS.indexOf(id2) !== -1) continue;
 
                             var isSection = false;
                             for (var s2 = 0; s2 < SECTIONS.length; s2++) {
@@ -1434,6 +1700,19 @@ JS;
                             }
                             if (isSection) continue;
 
+                            // Проверка: id2 — это ПУНКТ какого-то раздела
+                            var isSectionItem = false;
+                            for (var s3 = 0; s3 < SECTIONS.length; s3++) {
+                                var items3 = SECTIONS[s3].items || [];
+                                for (var ii3 = 0; ii3 < items3.length; ii3++) {
+                                    if (String(items3[ii3].id) === String(id2)) {
+                                        isSectionItem = true; break;
+                                    }
+                                }
+                                if (isSectionItem) break;
+                            }
+                            if (isSectionItem) continue;
+
                             li2.classList.add('fgz-moved');
                             li2.setAttribute('data-fgz-moved', '1');
                             li2.style.removeProperty('display');
@@ -1441,10 +1720,11 @@ JS;
                         }
                     }
 
-                    // Стабильная сортировка «Избранного»:
-                    // 1) по sort из ORDER (если есть),
-                    // 2) иначе по индексу в SELF_ITEMS (стабильно),
-                    // 3) иначе в конец.
+                    /**
+                     * Стабильно сортирует «Избранное»: sort из ORDER, индекс в SELF_ITEMS, порядок в DOM.
+                     *
+                     * @return {void}
+                     */
                     (function sortPersonal(){
                         var orderMap = {};
                         ORDER.forEach(function(o){
@@ -1491,6 +1771,58 @@ JS;
                     if (window.console) console.warn('fgz personal:', ePersonal);
                 }
             }
+
+            /**
+             * Закрепляет раздел «Избранное» самым последним в контейнере меню.
+             *
+             * @return {void}
+             */
+            (function pinPersonalFinal(){
+                var ph = document.getElementById('bx_left_menu_fgz_personal');
+                if (!ph) return;
+                var pc = ph.nextElementSibling;
+                while (pc && !pc.classList.contains('menu-item-group-more')) {
+                    pc = pc.nextElementSibling;
+                }
+                if (!pc) return;
+                var root = menuUl();
+            if (!root) return;
+                root.appendChild(ph);
+                root.appendChild(pc);
+            })();
+
+            /**
+             * Вешает открытие в SidePanel на пункты с флагом «слайдер».
+             *
+             * @return {void}
+             */
+            (function bindMenuSlider(){
+                var links = document.querySelectorAll('#menu-items-block a.menu-item-link');
+                for (var i = 0; i < links.length; i++) {
+                    var a = links[i];
+                    if (a.__fgzSliderBound) continue;
+                    if (a.classList.contains('menu-item-plus')) continue;
+                    var li = a.closest('li.menu-item-block');
+                    if (li && li.hasAttribute('data-fgz-sp')) continue;
+                    var href = a.getAttribute('href') || '';
+                    if (!href || href === '#' || href.indexOf('javascript:') === 0) continue;
+                    if (!SLIDER_URLS[href]) continue;
+                    a.__fgzSliderBound = 1;
+                    a.addEventListener('click', function(e){
+                        var href = this.getAttribute('href') || '';
+                        if (!href || href === '#' || href.indexOf('javascript:') === 0) return;
+                        if (!(window.BX && BX.SidePanel && BX.SidePanel.Instance)) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        BX.SidePanel.Instance.open(href, {
+                            cacheable: false,
+                            allowChangeHistory: true,
+                            allowCrossOrigin: true,
+                            width: 1000
+                        });
+                    }, true);
+                }
+            })();
         } finally {
             var b = block();
             if (b) b.classList.add('fgz-ready');
@@ -1499,6 +1831,11 @@ JS;
         }
     }
 
+    /**
+     * Включает наблюдение за изменениями DOM меню.
+     *
+     * @return {void}
+     */
     function connect() {
         var b = block();
         if (!b) return;
@@ -1507,6 +1844,11 @@ JS;
     }
 
     var lastApply = 0;
+    /**
+     * Планирует ближайший вызов apply() с троттлингом.
+     *
+     * @return {void}
+     */
     function schedule() {
         if (pending) return;
         if (window.__fgzApplying) return;
@@ -1523,11 +1865,21 @@ JS;
         }, 300);
     }
 
+    /**
+     * Запускает первую перестройку меню.
+     *
+     * @return {void}
+     */
     function start() {
         apply();
     }
 
     var tries = 0;
+    /**
+     * Ждёт появления контейнера меню, затем стартует через BX.ready.
+     *
+     * @return {void|number}
+     */
     (function wait() {
         var ul = menuUl();
         if (!ul) {
@@ -1564,12 +1916,7 @@ JS;
     }
 
     /**
-     * Проверяет, включён ли модуль для текущего пользователя.
-     *
-     * Видимость меню определяется правами модуля (вкладка «Доступ»):
-     * D — не показывать, R/W — показывать. Запрет (D) имеет приоритет:
-     * если хотя бы одна группа пользователя имеет «Доступ закрыт»,
-     * меню не показывается, даже если в другой группе есть R/W.
+     * Проверяет по правам модуля, показывать ли перестроенное меню текущему пользователю.
      *
      * @return bool
      */

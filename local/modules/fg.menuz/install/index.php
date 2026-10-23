@@ -27,6 +27,11 @@ class fg_menuz extends CModule
     /** @var string Описание модуля. */
     public $MODULE_DESCRIPTION;
 
+    /**
+     * Загружает версию модуля и инициализирует свойства.
+     *
+     * @return void
+     */
     public function __construct()
     {
         $arModuleVersion = [];
@@ -51,8 +56,6 @@ class fg_menuz extends CModule
 
     /**
      * Удаляет модуль в два шага: подтверждение и снятие регистрации.
-     *
-     * Настройки удаляются, если в форме не отмечено «сохранить данные».
      *
      * @return void
      */

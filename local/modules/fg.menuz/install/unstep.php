@@ -1,4 +1,13 @@
-<?if(!check_bitrix_sessid()) return;?>
+<?php
+
+/**
+ * Шаг 2 удаления модуля fg.menuz: сообщение о завершении.
+ *
+ * @package FG\Menuz
+ */
+
+if (!check_bitrix_sessid()) return;
+?>
 <p><?=GetMessage("FG_MENUZ_UNINSTALL_DONE")?></p>
 <p>
     <a href="/bitrix/admin/partner_modules.php?lang=<?=LANGUAGE_ID?>" class="adm-btn">
