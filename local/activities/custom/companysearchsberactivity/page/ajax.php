@@ -32,6 +32,116 @@ $action = $request->getPost('action');
  *
  * @return array{0: string, 1: string} Пары [ИНН, КПП].
  */
+/**
+ * Возвращает реквизиты пачки компаний одним запросом.
+ *
+ * @param array $companyIds Идентификаторы компаний.
+ *
+ * @return array ID => ['inn' => string, 'kpp' => string].
+ */
+/**
+ * Подбирает КПП по ИНН через Dadata.
+ *
+ * Сбер формирует отчёт только при известном КПП, а для ручного ввода его
+ * нет. Dadata отдаёт КПП по ИНН, поэтому пользователю достаточно ИНН.
+ *
+ * @param string $inn ИНН организации.
+ *
+ * @return string КПП или пустая строка.
+ */
+function dadataParty(string $inn): array
+{
+    static $cache = [];
+
+    if (isset($cache[$inn])) {
+        return $cache[$inn];
+    }
+
+    $cache[$inn] = ['kpp' => '', 'name' => ''];
+
+    if (!preg_match('/^\d{10}$|^\d{12}$/', $inn)) {
+        return $cache[$inn];
+    }
+
+    $configFile = $_SERVER['DOCUMENT_ROOT']
+        . '/local/activities/custom/companysearchactivity/config.php';
+
+    if (!is_file($configFile)) {
+        return $cache[$inn];
+    }
+
+    $dadata = include $configFile;
+    $apiKey = trim((string)($dadata['api_key'] ?? ''));
+
+    if ($apiKey === '') {
+        return $cache[$inn];
+    }
+
+    $ch = curl_init('https://suggestions.dadata.ru/suggestions/api/4_1/rs/findById/party');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 10,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => json_encode(['query' => $inn]),
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: application/json',
+            'Accept: application/json',
+            'Authorization: Token ' . $apiKey,
+        ],
+    ]);
+
+    $response = curl_exec($ch);
+    curl_close($ch);
+
+    $data = json_decode((string)$response, true);
+    $party = $data['suggestions'][0] ?? [];
+
+    $cache[$inn] = [
+        'kpp' => (string)($party['data']['kpp'] ?? ''),
+        'name' => (string)($party['data']['name']['short_with_opf'] ?? ($party['value'] ?? '')),
+    ];
+
+    return $cache[$inn];
+}
+
+/**
+ * Подбирает КПП по ИНН через Dadata.
+ *
+ * @param string $inn ИНН организации.
+ *
+ * @return string КПП или пустая строка.
+ */
+function findKppByInn(string $inn): string
+{
+    return dadataParty($inn)['kpp'];
+}
+
+function getRequisitesMap(array $companyIds): array
+{
+    $map = [];
+
+    if (!$companyIds) {
+        return $map;
+    }
+
+    $res = \Bitrix\Crm\RequisiteTable::getList([
+        'filter' => [
+            '@ENTITY_ID' => $companyIds,
+            '=ENTITY_TYPE_ID' => \CCrmOwnerType::Company,
+        ],
+        'select' => ['ENTITY_ID', 'RQ_INN', 'RQ_KPP'],
+    ]);
+
+    while ($row = $res->fetch()) {
+        $map[(int)$row['ENTITY_ID']] = [
+            'inn' => (string)$row['RQ_INN'],
+            'kpp' => (string)$row['RQ_KPP'],
+        ];
+    }
+
+    return $map;
+}
+
 function getCompanyRequisites(int $companyId): array
 {
     $inn = '';
@@ -53,48 +163,153 @@ function getCompanyRequisites(int $companyId): array
 }
 
 // Поиск компаний по названию, а при цифровом запросе — ещё и по ИНН.
+if ($action === 'list') {
+    // Список компаний по алфавиту: только те, у кого в реквизитах есть ИНН.
+    // Перебираем с запасом, чтобы даже при малом числе заполненных карточек
+    // набрать осмысленный список.
+    $rows = [];
+    $res = \Bitrix\Crm\CompanyTable::getList([
+        'select' => ['ID', 'TITLE'],
+        'order' => ['TITLE' => 'ASC'],
+        'limit' => 1000,
+    ]);
+    while ($row = $res->fetch()) {
+        $rows[] = $row;
+    }
+
+    $requisites = getRequisitesMap(array_map(static function ($row) {
+        return (int)$row['ID'];
+    }, $rows));
+
+    $companies = [];
+
+    foreach ($rows as $row) {
+        $companyId = (int)$row['ID'];
+        $req = $requisites[$companyId] ?? ['inn' => '', 'kpp' => ''];
+
+        if ($req['inn'] === '' || !preg_match('/^\d{10}$|^\d{12}$/', $req['inn'])) {
+            continue;
+        }
+
+        $title = trim((string)$row['TITLE']);
+
+        // Карточки с числом вместо названия («123456789», «0») в списке бесполезны.
+        if ($title === '' || !preg_match('/[а-яa-z]/iu', $title)) {
+            continue;
+        }
+
+        $companies[] = [
+            'ID' => $companyId,
+            'TITLE' => $title,
+            'INN' => $req['inn'],
+            'KPP' => $req['kpp'],
+        ];
+
+        if (count($companies) >= 20) {
+            break;
+        }
+    }
+
+    echo json_encode(['companies' => $companies]);
+    die();
+}
+
+if ($action === 'lookup') {
+    // Название организации по ИНН — для ручного ввода без карточки в CRM.
+    $inn = trim($request->getPost('inn'));
+    $party = dadataParty($inn);
+
+    echo json_encode([
+        'name' => $party['name'],
+        'kpp' => $party['kpp'],
+    ]);
+    die();
+}
+
 if ($action === 'search') {
     $query = trim($request->getPost('query'));
-    if (strlen($query) < 2) {
+    if (mb_strlen($query) < 2) {
         echo json_encode(['companies' => []]);
         die();
     }
 
     $companies = [];
-    $res = CCrmCompany::GetList(
-        ['TITLE' => 'ASC'],
-        ['CHECK_PERMISSIONS' => 'Y', '%TITLE' => $query],
-        ['ID', 'TITLE'],
-        ['nTopCount' => 10]
-    );
-    while ($row = $res->Fetch()) {
-        list($inn, $kpp) = getCompanyRequisites((int)$row['ID']);
-        $companies[] = [
-            'ID' => (int)$row['ID'],
-            'TITLE' => $row['TITLE'],
-            'INN' => $inn,
-            'KPP' => $kpp,
-        ];
+    $seen = [];
+
+    // 1. Поиск по названию: подстрока, а не только начало строки.
+    // Берём с запасом: фильтр по ИНН применяем после выборки, иначе
+    // первые десять мусорных карточек съедают весь лимит.
+    $rows = [];
+    $res = \Bitrix\Crm\CompanyTable::getList([
+        'select' => ['ID', 'TITLE'],
+        'filter' => ['%TITLE' => $query],
+        'order' => ['TITLE' => 'ASC'],
+        'limit' => 1000,
+    ]);
+    while ($row = $res->fetch()) {
+        $rows[] = $row;
     }
 
-    if (empty($companies) && ctype_digit($query)) {
+    $requisites = getRequisitesMap(array_map(static function ($row) {
+        return (int)$row['ID'];
+    }, $rows));
+
+    foreach ($rows as $row) {
+        $companyId = (int)$row['ID'];
+        $req = $requisites[$companyId] ?? ['inn' => '', 'kpp' => ''];
+
+        // Карточки без ИНН (технические записи вроде «2000х600х1000: поз 8»)
+        // в отчёт не годятся: анализ идёт по ИНН.
+        if ($req['inn'] === '') {
+            continue;
+        }
+
+        $companies[] = [
+            'ID' => $companyId,
+            'TITLE' => $row['TITLE'],
+            'INN' => $req['inn'],
+            'KPP' => $req['kpp'],
+        ];
+        $seen[$companyId] = true;
+
+        if (count($companies) >= 20) {
+            break;
+        }
+    }
+
+    @file_put_contents(
+        $_SERVER['DOCUMENT_ROOT'] . '/upload/sber_search.log',
+        date('c') . ' query=' . $query . ' total=' . \Bitrix\Crm\CompanyTable::getCount()
+            . ' companies=' . count($rows) . ' result=' . count($companies) . "\n",
+        FILE_APPEND
+    );
+
+    // 2. Поиск по ИНН/КПП: выполняется всегда, а не только когда по названию пусто.
+    if (preg_match('/^\d+$/', $query)) {
         $requisite = new \Bitrix\Crm\EntityRequisite();
         $dbRequisite = $requisite->getList([
-            'filter' => ['%RQ_INN' => $query],
+            // ENTITY_TYPE_ID = 4 — компания: иначе по ID можно поймать контакт.
+            'filter' => ['%RQ_INN' => $query, 'ENTITY_TYPE_ID' => \CCrmOwnerType::Company],
             'select' => ['ENTITY_ID'],
             'limit' => 10,
         ]);
         while ($req = $dbRequisite->fetch()) {
-            $company = CCrmCompany::GetByID($req['ENTITY_ID']);
-            if ($company) {
-                list($inn, $kpp) = getCompanyRequisites((int)$company['ID']);
-                $companies[] = [
-                    'ID' => (int)$company['ID'],
-                    'TITLE' => $company['TITLE'],
-                    'INN' => $inn,
-                    'KPP' => $kpp,
-                ];
+            $companyId = (int)$req['ENTITY_ID'];
+            if (isset($seen[$companyId]) || $companyId <= 0) {
+                continue;
             }
+            $company = CCrmCompany::GetByID($companyId);
+            if (!$company) {
+                continue;
+            }
+            list($inn, $kpp) = getCompanyRequisites($companyId);
+            $companies[] = [
+                'ID' => $companyId,
+                'TITLE' => $company['TITLE'],
+                'INN' => $inn,
+                'KPP' => $kpp,
+            ];
+            $seen[$companyId] = true;
         }
     }
 
@@ -107,7 +322,7 @@ if ($action === 'popular') {
     $companies = [];
     $res = CCrmCompany::GetList(
         ['ID' => 'DESC'],
-        ['CHECK_PERMISSIONS' => 'Y'],
+        [],
         ['ID', 'TITLE'],
         ['nTopCount' => 5]
     );
@@ -174,7 +389,8 @@ if ($action === 'analyze') {
     // Берём данные из истории, если запись моложе часа
     if (function_exists('sber_history_get_last')) {
         $history = sber_history_get_last($inn);
-        if ($history && $history['STATUS'] === 'success') {
+        // Из истории берём только записи с готовым отчётом: иначе кешируется пустой ответ.
+        if ($history && $history['STATUS'] === 'success' && !empty($history['REPORT_FILE'])) {
             $created = strtotime($history['CREATED_AT']);
             if (time() - $created < 3600) {
                 echo json_encode([
@@ -206,6 +422,11 @@ if ($action === 'analyze') {
                 die();
             }
         }
+    }
+
+    // КПП нужен Сберу для отчёта: если его нет, подбираем по ИНН.
+    if (empty($kpp)) {
+        $kpp = findKppByInn($inn);
     }
 
     // Данных нет или они устарели — обращаемся к API Сбера
@@ -249,6 +470,14 @@ if ($action === 'analyze') {
             'report_file' => $result['report_file'],
         ]);
     } catch (\Exception $e) {
+        // Диагностика: причина сбоя анализа нужна при разборе жалоб.
+        @file_put_contents(
+            $_SERVER['DOCUMENT_ROOT'] . '/upload/sber_analyze_errors.log',
+            date('c') . ' inn=' . $inn . ' kpp=' . $kpp . ' company=' . $companyId
+                . ' :: ' . $e->getMessage() . "\n",
+            FILE_APPEND
+        );
+
         echo json_encode(['error' => $e->getMessage()]);
     }
     die();
@@ -265,7 +494,7 @@ if ($action === 'analyze') {
  *
  * @throws \Exception При отсутствии данных или ошибке HTTP.
  */
-function callSberApi(string $inn, string $kpp, array $config): array
+function callSberApi(string $inn, string $kpp, array &$config): array
 {
     $isIp = (strlen($inn) === 12);
 
@@ -278,7 +507,20 @@ function callSberApi(string $inn, string $kpp, array $config): array
         $data['organizations'][0]['kpp'] = $kpp;
     }
 
+    try {
     $response = curlRequest($apiUrl, json_encode($data), $config, true);
+} catch (\Exception $e) {
+    if (strpos($e->getMessage(), 'Токен') !== false) {
+        $newToken = refreshSberToken($config);
+        if ($newToken) {
+            $response = curlRequest($apiUrl, json_encode($data), $config, true);
+        } else {
+            throw $e;
+        }
+    } else {
+        throw $e;
+    }
+}
     $responseData = json_decode($response, true);
 
     if (empty($responseData['message']['organizations'][0]['indicators'])) {
@@ -328,14 +570,32 @@ function callSberApi(string $inn, string $kpp, array $config): array
         $reportJson = json_decode($reportResponse, true);
 
         if (!empty($reportJson['externalLink'])) {
-            // Скачиваем PDF
-            $fileContent = curlRequest($reportJson['externalLink'], null, $config, false);
-            if (!empty($fileContent)) {
+            // Файл у Сбера готовится не мгновенно: пустой ответ 204 повторяем.
+            $fileContent = '';
+
+            for ($attempt = 0; $attempt < 3; $attempt++) {
+                try {
+                    $fileContent = curlRequest($reportJson['externalLink'], null, $config, false);
+                } catch (\Exception $e) {
+                    $fileContent = '';
+                }
+
+                if (!empty($fileContent) && strpos($fileContent, '%PDF') === 0) {
+                    break;
+                }
+
+                sleep(1);
+            }
+
+            if (!empty($fileContent) && strpos($fileContent, '%PDF') === 0) {
                 $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/upload/sber_reports/';
                 if (!is_dir($uploadDir)) mkdir($uploadDir, 0775, true);
                 $fileName = 'report_' . $inn . '_' . date('Ymd_His') . '.pdf';
-                file_put_contents($uploadDir . $fileName, $fileContent);
-                $result['report_file'] = '/upload/sber_reports/' . $fileName;
+                $filePath = $uploadDir . $fileName;
+                $written = file_put_contents($filePath, $fileContent);
+                if ($written && is_file($filePath)) {
+                    $result['report_file'] = '/upload/sber_reports/' . $fileName;
+                }
             }
         }
     } catch (\Exception $e) {
@@ -357,38 +617,100 @@ function callSberApi(string $inn, string $kpp, array $config): array
  *
  * @throws \Exception При CURL, HTTP-ошибке или истечении токена (401).
  */
-function curlRequest(string $url, ?string $payload, array $config, bool $isJson): string
+function curlRequest(string $url, ?string $payload, array &$config, bool $isJson): string
+{
+    $maxRetries = 2;
+    $attempt = 0;
+
+    while ($attempt < $maxRetries) {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, $config['timeout'] ?? 30);
+        curl_setopt($ch, CURLOPT_SSLCERTTYPE, 'P12');
+        curl_setopt($ch, CURLOPT_SSLCERT, $config['cert_path']);
+        curl_setopt($ch, CURLOPT_SSLCERTPASSWD, $config['cert_password']);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+
+        if ($payload !== null) {
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Content-Type: application/json',
+                'Accept: application/json',
+                'Authorization: Bearer ' . $config['access_token'],
+            ]);
+        } else {
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Accept: application/octet-stream']);
+        }
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        if ($error) throw new \Exception(Loc::getMessage('SBER_AJAX_ERROR_CURL') . $error);
+
+        // Если 401 — обновляем токен и повторяем
+        if ($httpCode === 401 && $attempt === 0) {
+            $newToken = refreshSberToken($config);
+            if ($newToken) {
+                $attempt++;
+                continue;
+            }
+            throw new \Exception(Loc::getMessage('SBER_AJAX_ERROR_TOKEN'));
+        }
+
+        if ($httpCode !== 200) {
+            throw new \Exception(Loc::getMessage('SBER_AJAX_ERROR_HTTP', ['#CODE#' => $httpCode]));
+        }
+
+        return $response;
+    }
+
+    throw new \Exception(Loc::getMessage('SBER_AJAX_ERROR_TOKEN'));
+}
+
+/**
+ * Обновляет токен через refresh_token и сохраняет в config.php.
+ *
+ * @param array $config Конфигурация (по ссылке).
+ * @return string|null Новый access_token или null при ошибке.
+ */
+function refreshSberToken(array &$config): ?string
 {
     $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_URL, 'https://fintech.sberbank.ru:9443/ic/sso/api/v2/oauth/token');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, $config['timeout'] ?? 30);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
+        'client_id' => '35107',
+        'client_secret' => $config['client_secret'],
+        'grant_type' => 'refresh_token',
+        'refresh_token' => $config['refresh_token'] ?? '',
+    ]));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/x-www-form-urlencoded']);
     curl_setopt($ch, CURLOPT_SSLCERTTYPE, 'P12');
     curl_setopt($ch, CURLOPT_SSLCERT, $config['cert_path']);
     curl_setopt($ch, CURLOPT_SSLCERTPASSWD, $config['cert_password']);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
 
-    if ($payload !== null) {
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json',
-            'Accept: application/json',
-            'Authorization: Bearer ' . $config['access_token'],
-        ]);
-    } else {
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Accept: application/octet-stream']);
-    }
-
     $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $error = curl_error($ch);
     curl_close($ch);
 
-    if ($error) throw new \Exception(Loc::getMessage('SBER_AJAX_ERROR_CURL') . $error);
-    if ($httpCode === 401) throw new \Exception(Loc::getMessage('SBER_AJAX_ERROR_TOKEN'));
-    if ($httpCode !== 200) throw new \Exception(Loc::getMessage('SBER_AJAX_ERROR_HTTP', ['#CODE#' => $httpCode]));
+    $data = json_decode($response, true);
+    if (empty($data['access_token'])) {
+        return null;
+    }
 
-    return $response;
+    $config['access_token'] = $data['access_token'];
+    $config['refresh_token'] = $data['refresh_token'];
+
+    // Сохраняем в config.php
+    $configContent = "<?php\n\n/**\n * Конфигурация для Sber API.\n *\n * @package CompanySearchSberActivity\n */\n\nreturn " . var_export($config, true) . ";\n";
+    @file_put_contents($_SERVER['DOCUMENT_ROOT'] . '/local/activities/custom/companysearchsberactivity/config.php', $configContent);
+
+    return $data['access_token'];
 }
