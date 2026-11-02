@@ -1,0 +1,1238 @@
+/**
+ * Стили страницы «Отчёт Сбер».
+ *
+ * Оформление повторяет паттерны портала Битрикс24: серый фон страницы,
+ * белые карточки со скруглением 12px и тонкой рамкой, нативные ui-ctl /
+ * ui-alert / ui-btn, цвета из ui.design-tokens. Собственных типографских
+ * экспериментов здесь нет — только сетка и отступы.
+ *
+ * @package CompanySearchSberActivity
+ */
+
+body {
+    margin: 0;
+    background: var(--ui-color-background-secondary, #f5f7f9);
+}
+
+/* ---------- Переменные ---------- */
+
+.sber-page {
+    --sber-card: var(--ui-color-background-primary, #ffffff);
+    --sber-bg: var(--ui-color-background-secondary, #f5f7f9);
+    --sber-border: var(--ui-color-base-20, #e6e9ec);
+    --sber-border-soft: var(--ui-color-base-10, #f0f2f4);
+    --sber-text: var(--ui-color-base-default, #1b1f24);
+    --sber-muted: var(--ui-color-base-70, #6b7280);
+    --sber-faint: var(--ui-color-base-60, #828b95);
+    --sber-accent: var(--ui-color-primary, #2f7ed8);
+
+    --sber-low: #2b6b00;
+    --sber-medium: #8a5300;
+    --sber-high: #b0231d;
+    --sber-none: #6b7280;
+
+    --sber-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+
+    box-sizing: border-box;
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 24px 24px 64px;
+    color: var(--sber-text);
+    font-family: var(--ui-font-family-system, "Open Sans", "Helvetica Neue", Arial, sans-serif);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+
+.sber-page *,
+.sber-page *::before,
+.sber-page *::after {
+    box-sizing: border-box;
+}
+
+.sber-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ---------- Шапка ---------- */
+
+.sber-head {
+    margin-bottom: 20px;
+}
+
+.sber-head__title {
+    margin: 0 0 4px;
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.sber-head__hint {
+    margin: 0;
+    color: var(--sber-faint);
+    font-size: 13px;
+}
+
+/* ---------- Поиск ---------- */
+
+.sber-search {
+    position: relative;
+}
+
+.sber-search__field {
+    border: 1px solid var(--sber-border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 44px;
+    padding: 0 12px;
+    border-radius: 8px;
+    background: var(--sber-card);
+    transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.sber-search__field:focus-within {
+    border-color: var(--sber-accent);
+    box-shadow: 0 0 0 3px rgba(47, 126, 216, 0.12);
+}
+
+.sber-search__spinner {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+}
+
+.sber-search__spinner[hidden] {
+    display: none;
+}
+
+.sber-search__icon {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    color: var(--sber-faint);
+}
+
+.sber-search__input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 40px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font-size: 14px;
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+/* Нативный фокус-ринг убран: состояние показывает сама рамка поля. */
+.sber-search__input:focus,
+.sber-search__input:focus-visible,
+.sber-search__input:hover {
+    outline: none;
+    box-shadow: none;
+}
+
+.sber-search__clear {
+    display: none;
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: var(--sber-border-soft);
+    color: var(--sber-muted);
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background-color 120ms ease, color 120ms ease;
+}
+
+.sber-search__clear:hover {
+    background: var(--sber-border);
+    color: var(--sber-text);
+}
+
+.sber-search__clear.is-visible {
+    display: block;
+}
+
+/* ---------- Выпадающий список ---------- */
+
+.sber-dropdown {
+    position: absolute;
+    z-index: 100;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    display: none;
+    max-height: 380px;
+    overflow-y: auto;
+    padding: 6px;
+    background: var(--sber-card);
+    border: 1px solid var(--sber-border);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(16, 24, 40, 0.12);
+    transform-origin: top center;
+}
+
+.sber-dropdown.is-open {
+    display: block;
+    animation: sber-pop 150ms var(--sber-ease-out);
+}
+
+.sber-dropdown__item {
+    display: block;
+    width: 100%;
+    padding: 9px 10px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 100ms ease;
+}
+
+.sber-dropdown__item:hover,
+.sber-dropdown__item:focus-visible {
+    background: var(--sber-bg);
+    outline: none;
+}
+
+.sber-dropdown__name {
+    display: block;
+    font-weight: 600;
+    font-size: 13.5px;
+    overflow-wrap: anywhere;
+}
+
+.sber-dropdown__meta {
+    display: block;
+    margin-top: 1px;
+    color: var(--sber-faint);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+.sber-dropdown__empty {
+    padding: 12px 10px;
+    color: var(--sber-faint);
+    font-size: 13px;
+}
+
+/* ---------- Недавние ---------- */
+
+.sber-recent {
+    display: none;
+    margin-top: 14px;
+}
+
+.sber-recent.is-visible {
+    display: block;
+}
+
+.sber-recent__label {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--sber-faint);
+    font-size: 12px;
+}
+
+.sber-recent__list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.sber-recent__chip {
+    max-width: 100%;
+    padding: 5px 12px;
+    border: 1px solid var(--sber-border);
+    border-radius: 100px;
+    background: var(--sber-card);
+    color: var(--sber-muted);
+    font: inherit;
+    font-size: 12.5px;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: border-color 120ms ease, color 120ms ease;
+}
+
+.sber-recent__chip:hover,
+.sber-recent__chip:focus-visible {
+    border-color: var(--sber-accent);
+    color: var(--sber-accent);
+    outline: none;
+}
+
+/* ---------- Карточка выбранной компании ---------- */
+
+.sber-company {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    margin-top: 16px;
+    padding: 16px 20px;
+    background: var(--sber-card);
+    border: 1px solid var(--sber-border);
+    border-radius: 12px;
+}
+
+.sber-company.is-visible {
+    display: flex;
+    animation: sber-rise 260ms var(--sber-ease-out) both;
+}
+
+.sber-company__main {
+    min-width: 0;
+}
+
+.sber-company__name {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.sber-company__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 16px;
+    margin: 6px 0 0;
+    color: var(--sber-muted);
+    font-size: 13px;
+}
+
+.sber-company__meta dt {
+    display: inline;
+    margin: 0;
+    color: var(--sber-faint);
+}
+
+.sber-company__meta dd {
+    display: inline;
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+}
+
+.sber-company__actions {
+    flex: 0 0 auto;
+}
+
+/* ---------- Результат ---------- */
+
+.sber-result {
+    display: none;
+    margin-top: 16px;
+}
+
+.sber-result.is-visible {
+    display: block;
+}
+
+.sber-result__body {
+    min-height: 20px;
+}
+
+.sber-result__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-bottom: 16px;
+    animation: sber-rise 300ms var(--sber-ease-out) both;
+}
+
+.sber-result__titles {
+    min-width: 0;
+}
+
+.sber-result__name {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+}
+
+.sber-result__meta {
+    margin: 4px 0 0;
+    color: var(--sber-faint);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Сводка рисков ---------- */
+
+.sber-verdict {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    margin-bottom: 12px;
+    padding: 16px 20px;
+    background: var(--sber-card);
+    border: 1px solid var(--sber-border);
+    border-radius: 12px;
+    animation: sber-rise 300ms var(--sber-ease-out) 50ms both;
+}
+
+.sber-verdict__main {
+    min-width: 0;
+}
+
+.sber-verdict__label {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--sber-faint);
+    font-size: 12px;
+}
+
+.sber-verdict__value {
+    display: block;
+    font-size: 24px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.sber-verdict__value--high {
+    color: var(--sber-high);
+}
+
+.sber-verdict__value--medium {
+    color: var(--sber-medium);
+}
+
+.sber-verdict__value--low {
+    color: var(--sber-low);
+}
+
+.sber-verdict__value--none {
+    color: var(--sber-muted);
+}
+
+.sber-verdict__meta {
+    margin: 4px 0 0;
+    color: var(--sber-faint);
+    font-size: 12.5px;
+}
+
+/* ---------- Полосы распределения ---------- */
+
+.sber-bars {
+    flex: 0 1 280px;
+    min-width: 220px;
+    display: grid;
+    gap: 7px;
+}
+
+.sber-bars__row {
+    display: grid;
+    grid-template-columns: 88px 1fr 18px;
+    align-items: center;
+    gap: 8px;
+    font-size: 11.5px;
+    color: var(--sber-muted);
+}
+
+.sber-bars__name {
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.sber-bars__track {
+    height: 5px;
+    border-radius: 3px;
+    background: var(--sber-border-soft);
+    overflow: hidden;
+}
+
+.sber-bars__fill {
+    display: block;
+    height: 100%;
+    border-radius: 3px;
+    transform-origin: left center;
+    animation: sber-grow 480ms var(--sber-ease-out) both;
+}
+
+.sber-bars__row:nth-child(1) .sber-bars__fill {
+    animation-delay: 120ms;
+}
+
+.sber-bars__row:nth-child(2) .sber-bars__fill {
+    animation-delay: 170ms;
+}
+
+.sber-bars__row:nth-child(3) .sber-bars__fill {
+    animation-delay: 220ms;
+}
+
+.sber-bars__row:nth-child(4) .sber-bars__fill {
+    animation-delay: 270ms;
+}
+
+.sber-bars__fill--high {
+    background: var(--sber-high);
+}
+
+.sber-bars__fill--medium {
+    background: var(--sber-medium);
+}
+
+.sber-bars__fill--low {
+    background: var(--sber-low);
+}
+
+.sber-bars__fill--none {
+    background: var(--sber-faint);
+}
+
+.sber-bars__count {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    color: var(--sber-text);
+}
+
+/* ---------- Индикаторы ---------- */
+
+.sber-indicators {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 8px;
+    margin-bottom: 16px;
+    animation: sber-rise 300ms var(--sber-ease-out) 70ms both;
+}
+
+.sber-indicator {
+    padding: 12px 14px;
+    background: var(--sber-card);
+    border: 1px solid var(--sber-border);
+    border-radius: 10px;
+    animation: sber-rise 260ms var(--sber-ease-out) both;
+}
+
+.sber-indicator:nth-child(1) {
+    animation-delay: 100ms;
+}
+
+.sber-indicator:nth-child(2) {
+    animation-delay: 135ms;
+}
+
+.sber-indicator:nth-child(3) {
+    animation-delay: 170ms;
+}
+
+.sber-indicator:nth-child(4) {
+    animation-delay: 205ms;
+}
+
+.sber-indicator:nth-child(5) {
+    animation-delay: 240ms;
+}
+
+.sber-indicator:nth-child(6) {
+    animation-delay: 275ms;
+}
+
+.sber-indicator__label {
+    margin-bottom: 6px;
+    color: var(--sber-faint);
+    font-size: 12px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.sber-indicator__level {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.sber-indicator__level::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.sber-indicator__level--high {
+    color: var(--sber-high);
+}
+
+.sber-indicator__level--medium {
+    color: var(--sber-medium);
+}
+
+.sber-indicator__level--low {
+    color: var(--sber-low);
+}
+
+.sber-indicator__level--none {
+    color: var(--sber-faint);
+}
+
+.sber-indicator__desc {
+    margin: 6px 0 0;
+    color: var(--sber-faint);
+    font-size: 12px;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+/* ---------- Разделы ---------- */
+
+.sber-sections {
+    background: var(--sber-card);
+    border: 1px solid var(--sber-border);
+    border-radius: 12px;
+    overflow: hidden;
+    animation: sber-rise 300ms var(--sber-ease-out) 110ms both;
+}
+
+.sber-sections__actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.sber-sections__toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--sber-border-soft);
+}
+
+.sber-sections__title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.sber-sections__toggle {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--sber-accent);
+    font: inherit;
+    font-size: 12.5px;
+    cursor: pointer;
+}
+
+.sber-sections__toggle:hover,
+.sber-sections__toggle:focus-visible {
+    text-decoration: underline;
+    outline: none;
+}
+
+/* ---------- Секция ---------- */
+
+.sber-section {
+    border-bottom: 1px solid var(--sber-border-soft);
+}
+
+.sber-section:last-child {
+    border-bottom: 0;
+}
+
+.sber-section__summary {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 12px 20px;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+    transition: background-color 120ms ease;
+}
+
+.sber-section__summary::-webkit-details-marker {
+    display: none;
+}
+
+.sber-section__summary:hover {
+    background: var(--sber-bg);
+}
+
+.sber-section__summary:focus-visible {
+    outline: 2px solid var(--sber-accent);
+    outline-offset: -2px;
+}
+
+.sber-section__chevron {
+    flex: 0 0 auto;
+    width: 9px;
+    height: 9px;
+    color: var(--sber-faint);
+    transition: transform 200ms var(--sber-ease-out);
+}
+
+.sber-section[open] .sber-section__chevron {
+    transform: rotate(90deg);
+}
+
+.sber-section__name {
+    flex: 1 1 auto;
+    font-size: 14px;
+    font-weight: 500;
+    overflow-wrap: anywhere;
+}
+
+.sber-section__count {
+    flex: 0 0 auto;
+    color: var(--sber-faint);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+.sber-section__body {
+    padding: 0 20px 16px;
+}
+
+.sber-section[open] .sber-section__body {
+    animation: sber-fade 180ms ease both;
+}
+
+/* ---------- Строки ---------- */
+
+.sber-rows {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.sber-row {
+    display: grid;
+    grid-template-columns: minmax(160px, 38%) 1fr auto;
+    align-items: baseline;
+    gap: 2px 16px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--sber-border-soft);
+}
+
+.sber-row:last-child {
+    border-bottom: 0;
+}
+
+.sber-row__key {
+    color: var(--sber-faint);
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+
+.sber-row__value {
+    font-size: 13px;
+    font-weight: 400;
+    overflow-wrap: anywhere;
+    font-variant-numeric: tabular-nums;
+}
+
+.sber-row__copy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--sber-faint);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 140ms ease, background-color 120ms ease, color 120ms ease;
+}
+
+.sber-row:hover .sber-row__copy,
+.sber-row:focus-within .sber-row__copy,
+.sber-row__copy.is-done {
+    opacity: 1;
+}
+
+.sber-row__copy:hover,
+.sber-row__copy:focus-visible {
+    background: var(--sber-bg);
+    color: var(--sber-text);
+    outline: none;
+}
+
+.sber-row__copy.is-done {
+    color: var(--sber-low);
+}
+
+.sber-row__text {
+    grid-column: 1 / -1;
+    color: var(--sber-muted);
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+
+.sber-row--heading .sber-row__text {
+    margin-top: 4px;
+    color: var(--sber-text);
+    font-weight: 600;
+}
+
+/* ---------- Таблица баланса ---------- */
+
+.sber-table-wrap {
+    margin-top: 4px;
+    overflow-x: auto;
+    border: 1px solid var(--sber-border-soft);
+    border-radius: 8px;
+}
+
+.sber-table {
+    width: 100%;
+    min-width: 520px;
+    border-collapse: collapse;
+    font-size: 13px;
+    background: var(--sber-card);
+}
+
+.sber-table th,
+.sber-table td {
+    padding: 8px 12px;
+    text-align: right;
+    border-bottom: 1px solid var(--sber-border-soft);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.sber-table th {
+    position: sticky;
+    top: 0;
+    background: var(--sber-bg);
+    color: var(--sber-faint);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.sber-table th:first-child,
+.sber-table td:first-child {
+    text-align: left;
+    white-space: normal;
+}
+
+.sber-table th:nth-child(2),
+.sber-table td:nth-child(2) {
+    text-align: center;
+    color: var(--sber-faint);
+    font-size: 12px;
+}
+
+.sber-table--data th,
+.sber-table--data td {
+    text-align: left;
+    white-space: normal;
+}
+
+.sber-table--data th:first-child,
+.sber-table--data td:first-child {
+    color: var(--sber-text);
+}
+
+.sber-table--data th {
+    border-right: 1px solid var(--sber-border-soft);
+}
+
+.sber-table--data th:last-child {
+    border-right: 0;
+}
+
+.sber-table--data th:nth-child(2),
+.sber-table--data td:nth-child(2) {
+    text-align: left;
+    color: var(--sber-muted);
+}
+
+.sber-table--data td.is-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Фиксированные ширины: название шире, код узкий, числа — по остатку. */
+.sber-table--data {
+    table-layout: fixed;
+}
+
+.sber-table--data th:first-child,
+.sber-table--data td:first-child {
+    width: 38%;
+}
+
+.sber-table--data th:nth-child(2),
+.sber-table--data td:nth-child(2) {
+    width: 11%;
+}
+
+.sber-table--data tbody tr {
+    background: transparent;
+}
+
+.sber-table--data td {
+    border-right: 1px solid var(--sber-border-soft);
+    vertical-align: top;
+}
+
+.sber-table--data td:last-child {
+    border-right: 0;
+}
+
+.sber-table tbody tr:hover {
+    background: var(--sber-bg);
+}
+
+.sber-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+/* ---------- Пусто / загрузка ---------- */
+
+.sber-empty {
+    padding: 20px;
+    background: var(--sber-card);
+    border: 1px solid var(--sber-border);
+    border-radius: 12px;
+    color: var(--sber-faint);
+    font-size: 13px;
+    text-align: center;
+}
+
+.sber-alert {
+    margin: 0;
+}
+
+.sber-loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 20px;
+    background: var(--sber-card);
+    border: 1px solid var(--sber-border);
+    border-radius: 12px;
+    color: var(--sber-muted);
+    font-size: 13px;
+}
+
+.sber-loading__spinner {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+    border: 2px solid var(--sber-border);
+    border-top-color: var(--sber-accent);
+    border-radius: 50%;
+    animation: sber-spin 600ms linear infinite;
+}
+
+/* ---------- Ключевые кадры ---------- */
+
+@keyframes sber-rise {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes sber-fade {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes sber-grow {
+    from {
+        transform: scaleX(0);
+    }
+    to {
+        transform: scaleX(1);
+    }
+}
+
+@keyframes sber-pop {
+    from {
+        opacity: 0;
+        transform: scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes sber-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ---------- Адаптив ---------- */
+
+@media (max-width: 720px) {
+    .sber-page {
+        padding: 16px 14px 48px;
+    }
+
+    .sber-company {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .sber-company__actions {
+        width: 100%;
+    }
+
+    .sber-verdict__value {
+        font-size: 20px;
+    }
+
+    .sber-bars {
+        flex: 1 0 100%;
+    }
+
+    .sber-indicators {
+        grid-template-columns: 1fr;
+    }
+
+    .sber-row {
+        grid-template-columns: 1fr auto;
+    }
+
+    .sber-row__key {
+        grid-column: 1 / -1;
+    }
+
+    .sber-row__copy {
+        opacity: 1;
+    }
+}
+
+@media (hover: none) {
+    .sber-row__copy {
+        opacity: 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sber-page *,
+    .sber-page *::before,
+    .sber-page *::after {
+        animation: none !important;
+        transition-duration: 0.01ms !important;
+    }
+
+    .sber-dropdown.is-open,
+    .sber-section[open] .sber-section__body {
+        animation: sber-fade 160ms ease;
+    }
+}
+
+/* ---------- Кнопки ---------- */
+
+.sber-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 32px;
+    padding: 0 14px;
+    border: 1px solid var(--sber-border);
+    border-radius: 8px;
+    background: var(--sber-card);
+    color: var(--sber-text);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.sber-btn:hover {
+    border-color: var(--sber-accent);
+    color: var(--sber-accent);
+}
+
+.sber-btn--primary {
+    border-color: transparent;
+    background: var(--sber-accent);
+    color: #fff;
+}
+
+.sber-btn--primary:hover {
+    background: var(--sber-accent);
+    color: #fff;
+    filter: brightness(0.94);
+}
+
+.sber-sections__actions .sber-btn {
+    height: 28px;
+    font-size: 12.5px;
+}
+
+/* ---------- Список компаний в поиске ---------- */
+
+.sber-dropdown__title {
+    padding: 6px 10px 8px;
+    color: var(--sber-faint);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+/* ---------- Скелетон загрузки ---------- */
+
+.sber-skeleton {
+    display: block;
+}
+
+.sber-skeleton__verdict,
+.sber-skeleton__card,
+.sber-skeleton__row {
+    background: linear-gradient(90deg, var(--sber-border-soft) 25%, #f7f8fa 37%, var(--sber-border-soft) 63%);
+    background-size: 400% 100%;
+    border-radius: 10px;
+    animation: sber-shimmer 1.4s ease infinite;
+}
+
+.sber-skeleton__verdict {
+    height: 92px;
+    margin-bottom: 12px;
+    border-radius: 12px;
+}
+
+.sber-skeleton__cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.sber-skeleton__card {
+    height: 66px;
+}
+
+.sber-skeleton__rows {
+    padding: 16px 20px;
+    background: var(--sber-card);
+    border: 1px solid var(--sber-border);
+    border-radius: 12px;
+}
+
+.sber-skeleton__row {
+    height: 36px;
+    margin-bottom: 8px;
+}
+
+.sber-skeleton__row:last-child {
+    margin-bottom: 0;
+}
+
+@keyframes sber-shimmer {
+    from {
+        background-position: 100% 0;
+    }
+    to {
+        background-position: 0 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sber-skeleton__verdict,
+    .sber-skeleton__card,
+    .sber-skeleton__row {
+        animation: none;
+    }
+}
+
+.sber-dropdown__item--manual {
+    margin-top: 4px;
+    border-top: 1px solid var(--sber-border-soft);
+    border-radius: 0 0 6px 6px;
+}
+
+.sber-dropdown__item--manual .sber-dropdown__name {
+    color: var(--sber-accent);
+}
+
+/* ---------- Виды деятельности (ОКВЭД) ---------- */
+
+.sber-okved {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.sber-okved__item {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--sber-border-soft);
+}
+
+.sber-okved__item:last-child {
+    border-bottom: 0;
+}
+
+.sber-okved__name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.sber-okved__code {
+    flex: 0 0 auto;
+    color: var(--sber-faint);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* ---------- Пояснение об отсутствии отчёта ---------- */
+
+.sber-notice {
+    margin-bottom: 12px;
+    padding: 12px 16px;
+    border-left: 2px solid var(--sber-medium);
+    background: #fff8ec;
+    border-radius: 6px;
+    color: var(--sber-medium);
+    font-size: 13px;
+    line-height: 1.45;
+}

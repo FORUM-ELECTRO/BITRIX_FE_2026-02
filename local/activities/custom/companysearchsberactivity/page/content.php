@@ -1,5 +1,5 @@
 <?php
-require($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/main/include/prolog_before.php");
+require($_SERVER["DOCUMENT_ROOT"] . "/bitrix/modules/main/include/prolog_before.php");
 
 use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
@@ -17,97 +17,125 @@ if (!Loader::includeModule('crm')) {
 \Bitrix\Main\UI\Extension::load([
     'main.core',
     'ui.buttons',
-    'ui.forms',
     'ui.alerts',
-    'ui.sidepanel',
-    'ui.loader',
     'ui.design-tokens',
     'ui.fonts.opensans',
-    'ui.fonts.roboto',
 ]);
 
-$APPLICATION->SetAdditionalCSS('/bitrix/js/ui/buttons/dist/ui.buttons.bundle.min.css');
-$APPLICATION->AddHeadScript('/bitrix/js/ui/buttons/dist/ui.buttons.bundle.min.js');
-$APPLICATION->AddHeadScript('/bitrix/js/ui/loader/dist/loader.bundle.min.js');
+$cssPath = '/local/activities/custom/companysearchsberactivity/page/assets/sber-report.css';
+$cssVersion = @filemtime($_SERVER['DOCUMENT_ROOT'] . $cssPath) ?: 1;
+$APPLICATION->SetAdditionalCSS($cssPath . '?v=' . $cssVersion);
 ?>
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <?php $APPLICATION->ShowHead(); ?>
-    <style>
-        body, .ui-card, button, input, pre, table, td, th {
-            font-family: 'SB Sans Interface', 'SB Sans Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-        }
-    </style>
 </head>
 <body>
 
-<div style="padding:24px;max-width:840px;font-family:'SB Sans Interface', 'SB Sans Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-    <h2 style="margin:0 0 20px;font-size:22px;font-weight:600;"><?php echo Loc::getMessage('SBER_CONTENT_TITLE'); ?></h2>
+<div class="sber-page">
 
-    <!-- Поиск компании: название или ИНН -->
-    <div style="position:relative;margin-bottom:20px;">
-        <div class="ui-ctl ui-ctl-textbox ui-ctl-w100" style="position:relative;">
-            <input type="text" id="company-search" class="ui-ctl-element"
-                   placeholder="<?php echo htmlspecialcharsbx(Loc::getMessage('SBER_CONTENT_SEARCH_PLACEHOLDER')); ?>" autocomplete="off">
-            <div id="search-spinner" style="display:none;position:absolute;right:12px;top:50%;transform:translateY(-50%);">
-                <div class="ui-loader-circular"><span class="ui-loader-circular-txt">&#8203;</span></div>
-            </div>
+    <header class="sber-head">
+        <h1 class="sber-head__title"><?php echo Loc::getMessage('SBER_CONTENT_TITLE'); ?></h1>
+        <p class="sber-head__hint"><?php echo Loc::getMessage('SBER_CONTENT_HINT'); ?></p>
+    </header>
+
+    <div class="sber-search">
+        <div class="sber-search__field">
+            <svg class="sber-search__icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                <circle cx="9" cy="9" r="6" fill="none" stroke="currentColor" stroke-width="1.7"></circle>
+                <path d="M13.5 13.5L17 17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path>
+            </svg>
+            <input type="text"
+                   id="company-search"
+                   class="sber-search__input"
+                   placeholder="<?php echo htmlspecialcharsbx(Loc::getMessage('SBER_CONTENT_SEARCH_PLACEHOLDER')); ?>"
+                   aria-label="<?php echo htmlspecialcharsbx(Loc::getMessage('SBER_CONTENT_SEARCH_ARIA')); ?>"
+                   aria-controls="search-results"
+                   aria-expanded="false"
+                   autocomplete="off"
+                   spellcheck="false">
+            <span id="search-spinner" class="sber-search__spinner" hidden>
+                <span class="sber-loading__spinner"></span>
+            </span>
+            <button type="button"
+                    id="search-clear"
+                    class="sber-search__clear"
+                    aria-label="<?php echo htmlspecialcharsbx(Loc::getMessage('SBER_CONTENT_CLEAR')); ?>">&times;</button>
         </div>
-        <div id="search-results" style="position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d5d8dc;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.08);margin-top:4px;display:none;z-index:100;max-height:360px;overflow-y:auto;"></div>
+        <div id="search-results" class="sber-dropdown" role="listbox"></div>
     </div>
 
-    <!-- Недавние компании -->
-    <div id="quick-section" style="margin-bottom:24px;">
-        <div id="recent-block" style="display:none;margin-bottom:16px;">
-            <div style="font-size:12px;color:#828b95;text-transform:uppercase;margin-bottom:8px;"><?php echo Loc::getMessage('SBER_CONTENT_L_RECENT'); ?></div>
-            <div id="recent-list" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+    <div id="recent-block" class="sber-recent">
+        <span class="sber-recent__label"><?php echo Loc::getMessage('SBER_CONTENT_L_RECENT'); ?></span>
+        <div id="recent-list" class="sber-recent__list"></div>
+    </div>
+
+    <section id="selected-company" class="sber-company" aria-label="<?php echo htmlspecialcharsbx(Loc::getMessage('SBER_CONTENT_SELECTED_ARIA')); ?>">
+        <div class="sber-company__main">
+            <h2 class="sber-company__name" id="selected-title"></h2>
+            <dl class="sber-company__meta">
+                <div>
+                    <dt><?php echo Loc::getMessage('SBER_CONTENT_L_INN'); ?></dt>
+                    <dd id="selected-inn"></dd>
+                </div>
+                <div>
+                    <dt><?php echo Loc::getMessage('SBER_CONTENT_L_KPP'); ?></dt>
+                    <dd id="selected-kpp"></dd>
+                </div>
+            </dl>
         </div>
-    </div>
+        <div class="sber-company__actions" id="analyze-btn-container"></div>
+    </section>
 
-    <!-- Информация о выбранной компании -->
-<div id="selected-company" style="display:none;margin-bottom:20px;padding:16px 20px;background:var(--ui-color-background-secondary, #f5f7f9);border-radius:12px;">
-        <div style="font-size:16px;font-weight:600;" id="selected-title"></div>
-        <div style="font-size:13px;color:#525c69;margin-top:4px;">
-            <?php echo htmlspecialcharsbx(Loc::getMessage('SBER_CONTENT_L_INN')); ?> <span id="selected-inn"></span> &nbsp;|&nbsp; <?php echo htmlspecialcharsbx(Loc::getMessage('SBER_CONTENT_L_KPP')); ?> <span id="selected-kpp"></span>
-        </div>
-    </div>
+    <section id="analysis-result" class="sber-result" aria-live="polite">
+        <div class="sber-result__body" id="analysis-content"></div>
+    </section>
 
-    <!-- Кнопка запуска анализа -->
-    <div id="analyze-btn-container" style="margin-bottom:24px;display:none;"></div>
-
-<!-- Результат анализа компании -->
-<div id="analysis-result" style="display:none;">
-    <div style="background:#fff;border-radius:16px;padding:24px;box-shadow:0 2px 12px rgba(0,0,0,0.06);">
-        <div id="analysis-content"></div>
-    </div>
 </div>
 
 <script>
 BX.message(<?php echo Json::encode([
     'SBER_CONTENT_NOT_FOUND' => Loc::getMessage('SBER_CONTENT_NOT_FOUND'),
+    'SBER_CONTENT_SEARCH_MIN' => Loc::getMessage('SBER_CONTENT_SEARCH_MIN'),
+    'SBER_CONTENT_ALL_COMPANIES' => Loc::getMessage('SBER_CONTENT_ALL_COMPANIES'),
+    'SBER_CONTENT_CHECK_BY_INN' => Loc::getMessage('SBER_CONTENT_CHECK_BY_INN'),
     'SBER_CONTENT_BTN_ANALYZE' => Loc::getMessage('SBER_CONTENT_BTN_ANALYZE'),
     'SBER_CONTENT_LOADING' => Loc::getMessage('SBER_CONTENT_LOADING'),
     'SBER_CONTENT_PARSING' => Loc::getMessage('SBER_CONTENT_PARSING'),
     'SBER_CONTENT_ERROR_REQUEST' => Loc::getMessage('SBER_CONTENT_ERROR_REQUEST'),
     'SBER_CONTENT_ERROR_REQUEST_SERVER' => Loc::getMessage('SBER_CONTENT_ERROR_REQUEST_SERVER'),
-    'SBER_CONTENT_ERROR_PREFIX' => Loc::getMessage('SBER_CONTENT_ERROR_PREFIX'),
     'SBER_CONTENT_COMPANY' => Loc::getMessage('SBER_CONTENT_COMPANY'),
+    'SBER_CONTENT_L_INN' => Loc::getMessage('SBER_CONTENT_L_INN'),
+    'SBER_CONTENT_L_KPP' => Loc::getMessage('SBER_CONTENT_L_KPP'),
     'SBER_CONTENT_INDICATOR' => Loc::getMessage('SBER_CONTENT_INDICATOR'),
     'SBER_CONTENT_COPY' => Loc::getMessage('SBER_CONTENT_COPY'),
+    'SBER_CONTENT_COPIED' => Loc::getMessage('SBER_CONTENT_COPIED'),
     'SBER_CONTENT_REPORT_DETAILS' => Loc::getMessage('SBER_CONTENT_REPORT_DETAILS'),
-    'SBER_CONTENT_REPORT_TEXT' => Loc::getMessage('SBER_CONTENT_REPORT_TEXT'),
     'SBER_CONTENT_DOWNLOAD_PDF' => Loc::getMessage('SBER_CONTENT_DOWNLOAD_PDF'),
     'SBER_CONTENT_RISK_NONE' => Loc::getMessage('SBER_CONTENT_RISK_NONE'),
     'SBER_CONTENT_RISK_LOW' => Loc::getMessage('SBER_CONTENT_RISK_LOW'),
     'SBER_CONTENT_RISK_MEDIUM' => Loc::getMessage('SBER_CONTENT_RISK_MEDIUM'),
     'SBER_CONTENT_RISK_HIGH' => Loc::getMessage('SBER_CONTENT_RISK_HIGH'),
+    'SBER_CONTENT_LABEL_COMPLIANCE' => Loc::getMessage('SBER_CONTENT_LABEL_COMPLIANCE'),
+    'SBER_CONTENT_LABEL_STATE_SOURCES' => Loc::getMessage('SBER_CONTENT_LABEL_STATE_SOURCES'),
+    'SBER_CONTENT_LABEL_FINANCE' => Loc::getMessage('SBER_CONTENT_LABEL_FINANCE'),
+    'SBER_CONTENT_LABEL_RATING' => Loc::getMessage('SBER_CONTENT_LABEL_RATING'),
     'SBER_CONTENT_TH_INDICATOR' => Loc::getMessage('SBER_CONTENT_TH_INDICATOR'),
     'SBER_CONTENT_TH_CODE' => Loc::getMessage('SBER_CONTENT_TH_CODE'),
+    'SBER_CONTENT_SUMMARY_LABEL' => Loc::getMessage('SBER_CONTENT_SUMMARY_LABEL'),
+    'SBER_CONTENT_EXPAND_ALL' => Loc::getMessage('SBER_CONTENT_EXPAND_ALL'),
+    'SBER_CONTENT_COLLAPSE_ALL' => Loc::getMessage('SBER_CONTENT_COLLAPSE_ALL'),
+    'SBER_CONTENT_NO_DETAILS' => Loc::getMessage('SBER_CONTENT_NO_DETAILS'),
+    'SBER_CONTENT_ROWS_1' => Loc::getMessage('SBER_CONTENT_ROWS_1'),
+    'SBER_CONTENT_ROWS_2' => Loc::getMessage('SBER_CONTENT_ROWS_2'),
+    'SBER_CONTENT_ROWS_5' => Loc::getMessage('SBER_CONTENT_ROWS_5'),
     'SBER_CONTENT_SEC_REGISTRATION' => Loc::getMessage('SBER_CONTENT_SEC_REGISTRATION'),
     'SBER_CONTENT_SEC_FINANCE' => Loc::getMessage('SBER_CONTENT_SEC_FINANCE'),
     'SBER_CONTENT_SEC_BALANCE' => Loc::getMessage('SBER_CONTENT_SEC_BALANCE'),
+    'SBER_CONTENT_SEC_RESULTS' => Loc::getMessage('SBER_CONTENT_SEC_RESULTS'),
     'SBER_CONTENT_SEC_COURTS' => Loc::getMessage('SBER_CONTENT_SEC_COURTS'),
     'SBER_CONTENT_SEC_CONTRACTS' => Loc::getMessage('SBER_CONTENT_SEC_CONTRACTS'),
     'SBER_CONTENT_SEC_TAXES' => Loc::getMessage('SBER_CONTENT_SEC_TAXES'),
@@ -116,130 +144,568 @@ BX.message(<?php echo Json::encode([
     'SBER_CONTENT_SEC_REVIEWS' => Loc::getMessage('SBER_CONTENT_SEC_REVIEWS'),
 ]); ?>);
 
-BX.ready(function() {
-    var searchInput = document.getElementById('company-search');
-    var searchResults = document.getElementById('search-results');
-    var selectedBlock = document.getElementById('selected-company');
-    var analyzeBtnContainer = document.getElementById('analyze-btn-container');
-    var resultBlock = document.getElementById('analysis-result');
-    var resultContent = document.getElementById('analysis-content');
+BX.ready(function () {
+    var input = document.getElementById('company-search');
+    var clearBtn = document.getElementById('search-clear');
     var spinner = document.getElementById('search-spinner');
+    var dropdown = document.getElementById('search-results');
+    var recentBlock = document.getElementById('recent-block');
+    var recentList = document.getElementById('recent-list');
+    var companyCard = document.getElementById('selected-company');
+    var selectedTitle = document.getElementById('selected-title');
+    var selectedInn = document.getElementById('selected-inn');
+    var selectedKpp = document.getElementById('selected-kpp');
+    var analyzeBox = document.getElementById('analyze-btn-container');
+    var resultSection = document.getElementById('analysis-result');
+    var resultContent = document.getElementById('analysis-content');
 
-    var selectedCompany = null;
-    var searchTimeout = null;
-    var analyzeButton = null;
+    var state = {
+        company: null,
+        found: [],
+        timeout: null,
+        button: null,
+        years: [],
+        all: null
+    };
 
-/**
- * Рисует чипы недавно проанализированных компаний из localStorage.
- */
-function loadRecent() {
-        var recent = JSON.parse(localStorage.getItem('sber_recent_companies') || '[]');
-        if (recent.length === 0) return;
-        var block = document.getElementById('recent-block');
-        var list = document.getElementById('recent-list');
-        block.style.display = 'block';
-        list.innerHTML = '';
-        recent.forEach(function(c) {
-            var chip = document.createElement('span');
-            chip.textContent = c.TITLE;
-            chip.style.cssText = 'padding:6px 14px;background:#e8f4e8;color:#008000;border-radius:16px;cursor:pointer;font-size:13px;';
-            chip.addEventListener('click', function() { selectCompany(c); });
-            list.appendChild(chip);
+    /** Коды уровней в порядке убывания серьёзности. */
+    var LEVEL_ORDER = ['high', 'medium', 'low', 'none'];
+
+    /** Названия уровней для сводки. */
+    var LEVEL_TEXT = {
+        high: 'SBER_CONTENT_RISK_HIGH',
+        medium: 'SBER_CONTENT_RISK_MEDIUM',
+        low: 'SBER_CONTENT_RISK_LOW',
+        none: 'SBER_CONTENT_RISK_NONE'
+    };
+
+    /**
+     * Экранирует HTML-спецсимволы.
+     *
+     * @param {*} value Исходное значение.
+     *
+     * @returns {string} Безопасная для вставки в HTML строка.
+     */
+    function esc(value) {
+        return String(value === null || value === undefined ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    /**
+     * Подбирает форму слова по числу.
+     *
+     * @param {number} n    Число.
+     * @param {string} one  Фраза для 1.
+     * @param {string} few  Фраза для 2-4.
+     * @param {string} many Фраза для 5+.
+     *
+     * @returns {string} Готовая фраза с подставленным числом.
+     */
+    function plural(n, one, few, many) {
+        var mod10 = n % 10;
+        var mod100 = n % 100;
+        var template = many;
+        if (mod10 === 1 && mod100 !== 11) {
+            template = one;
+        } else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+            template = few;
+        }
+        return template.replace('#COUNT#', n);
+    }
+
+    /**
+     * Разбивает длинное целое число на разряды для читаемости.
+     *
+     * ИНН, КПП и ОГРН не трогаем: там разряды не нужны, а пробелы мешают
+     * копированию реквизитов.
+     *
+     * @param {string} value Значение из отчёта.
+     *
+     * @returns {string} Значение с разделителями разрядов или исходное.
+     */
+    function formatNumber(value) {
+        var text = String(value === null || value === undefined ? '' : value).trim();
+
+        if (!/^-?\d{5,}$/.test(text)) {
+            return text;
+        }
+
+        return text.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    }
+
+    /**
+     * Определяет код, подпись и вес риска по уровню из API или PDF.
+     *
+     * @param {string} level Уровень: «Низкий риск», «GREEN» и т.п.
+     *
+     * @returns {Object} Формат {code, text, rank}.
+     */
+    function risk(level) {
+        var raw = String(level || '').trim();
+
+        if (!raw || raw === 'Нет данных' || raw === 'Нет оценки' || raw === 'BLANK') {
+            return { code: 'none', text: BX.message('SBER_CONTENT_RISK_NONE'), rank: 0 };
+        }
+        if (raw.indexOf('Низкий') !== -1 || raw === 'GREEN') {
+            return { code: 'low', text: BX.message('SBER_CONTENT_RISK_LOW'), rank: 1 };
+        }
+        if (raw.indexOf('Средний') !== -1 || raw === 'YELLOW') {
+            return { code: 'medium', text: BX.message('SBER_CONTENT_RISK_MEDIUM'), rank: 2 };
+        }
+        if (raw.indexOf('Высокий') !== -1 || raw === 'RED') {
+            return { code: 'high', text: BX.message('SBER_CONTENT_RISK_HIGH'), rank: 3 };
+        }
+
+        // Неизвестный уровень показываем как есть, не приписывая ему оценку.
+        return { code: 'none', text: raw, rank: 0 };
+    }
+
+    /* ---------- Недавние компании ---------- */
+
+    /**
+     * Читает список недавних компаний из localStorage.
+     *
+     * @returns {Array} Список компаний.
+     */
+    function readRecent() {
+        try {
+            var stored = JSON.parse(localStorage.getItem('sber_recent_companies') || '[]');
+            return Array.isArray(stored) ? stored : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    /** Рисует чипы недавно проанализированных компаний. */
+    function loadRecent() {
+        var recent = readRecent();
+        recentList.innerHTML = '';
+
+        if (!recent.length) {
+            recentBlock.classList.remove('is-visible');
+            return;
+        }
+
+        recentBlock.classList.add('is-visible');
+        recent.forEach(function (company) {
+            var chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'sber-recent__chip';
+            chip.textContent = company.TITLE;
+            chip.title = company.TITLE;
+            chip.addEventListener('click', function () {
+                selectCompany(company);
+            });
+            recentList.appendChild(chip);
         });
     }
 
+    /* ---------- Поиск ---------- */
 
-    // Живой поиск по названию или ИНН с дебаунсом 300 мс
-    searchInput.addEventListener('input', function() {
-        clearTimeout(searchTimeout);
-        var query = this.value.trim();
-        if (query.length < 2) {
-            searchResults.style.display = 'none';
+    /** Закрывает выпадающий список результатов поиска. */
+    function closeDropdown() {
+        dropdown.classList.remove('is-open');
+        input.setAttribute('aria-expanded', 'false');
+    }
+
+    /** Рисует список найденных компаний. */
+    /**
+     * Возвращает ИНН, если в поле введён корректный номер (10 или 12 цифр).
+     *
+     * @returns {string} ИНН или пустая строка.
+     */
+    function manualCompany() {
+        var query = input.value.trim();
+
+        // «ИНН КПП» — для юрлица КПП обязателен, иначе Сбер не отдаёт отчёт.
+        var pair = query.match(/^(\d{10})[\s,;]+(\d{9})$/);
+        if (pair) {
+            return {
+                ID: 'inn' + pair[1],
+                TITLE: 'ИНН ' + pair[1],
+                INN: pair[1],
+                KPP: pair[2]
+            };
+        }
+
+        if (/^\d{12}$/.test(query)) {
+            return {
+                ID: 'inn' + query,
+                TITLE: 'ИНН ' + query,
+                INN: query,
+                KPP: ''
+            };
+        }
+
+        if (/^\d{10}$/.test(query)) {
+            return {
+                ID: 'inn' + query,
+                TITLE: 'ИНН ' + query,
+                INN: query,
+                KPP: ''
+            };
+        }
+
+        return null;
+    }
+
+    /**
+     * Добавляет в список пункт «Проверить по ИНН» — для контрагента,
+     * которого ещё нет в CRM.
+     */
+    function appendManualInn() {
+        var manual = manualCompany();
+
+        if (!manual) {
             return;
         }
-        spinner.style.display = 'block';
-        searchTimeout = setTimeout(function() {
-            BX.ajax({
-                url: '/local/activities/custom/companysearchsberactivity/page/ajax.php',
-                method: 'POST',
-                dataType: 'json',
-                data: {action: 'search', query: query},
-                onsuccess: function(r) {
-                    spinner.style.display = 'none';
-                    if (r.companies && r.companies.length > 0) {
-                        var html = '';
-                        r.companies.forEach(function(c) {
-                            html += '<div class="search-item" data-json=\'' + JSON.stringify(c).replace(/'/g, '&#39;') + '\' style="padding:12px 16px;cursor:pointer;border-bottom:1px solid #f0f2f4;">';
-                            html += '<div style="font-weight:600;font-size:14px;">' + c.TITLE + '</div>';
-                            if (c.INN) html += '<div style="font-size:12px;color:#828b95;">' + BX.message('SBER_CONTENT_L_INN') + c.INN + '</div>';
-                            html += '</div>';
-                        });
-                        searchResults.innerHTML = html;
-                        searchResults.style.display = 'block';
-                        document.querySelectorAll('.search-item').forEach(function(item) {
-                            item.addEventListener('click', function() {
-                                var c = JSON.parse(this.getAttribute('data-json'));
-                                selectCompany(c);
-                            });
-                        });
-                    } else {
-                        searchResults.innerHTML = '<div style="padding:16px;color:#828b95;font-size:13px;">' + BX.message('SBER_CONTENT_NOT_FOUND') + '</div>';
-                        searchResults.style.display = 'block';
-                    }
-                },
-                onfailure: function() {
-                    spinner.style.display = 'none';
-                }
+
+        var item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'sber-dropdown__item sber-dropdown__item--manual';
+        item.innerHTML = '<span class="sber-dropdown__name">' + esc(manual.TITLE) + '</span>';
+
+        item.addEventListener('click', function () {
+            selectCompany(manual);
+        });
+
+        dropdown.appendChild(item);
+    }
+
+    function renderDropdown(title) {
+        if (!state.found.length) {
+            dropdown.innerHTML = '<div class="sber-dropdown__empty">'
+                + esc(BX.message('SBER_CONTENT_NOT_FOUND')) + '</div>';
+            appendManualInn();
+            dropdown.classList.add('is-open');
+            input.setAttribute('aria-expanded', 'true');
+            return;
+        }
+
+        dropdown.innerHTML = title
+            ? '<div class="sber-dropdown__title">' + esc(title) + '</div>'
+            : '';
+
+        state.found.forEach(function (company) {
+            var item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'sber-dropdown__item';
+            item.setAttribute('role', 'option');
+
+            var name = document.createElement('span');
+            name.className = 'sber-dropdown__name';
+            name.textContent = company.TITLE;
+            item.appendChild(name);
+
+            if (company.INN) {
+                var meta = document.createElement('span');
+                meta.className = 'sber-dropdown__meta';
+                meta.textContent = BX.message('SBER_CONTENT_L_INN') + ' ' + company.INN;
+                item.appendChild(meta);
+            }
+
+            item.addEventListener('click', function () {
+                selectCompany(company);
             });
+            dropdown.appendChild(item);
+        });
+
+        appendManualInn();
+
+        dropdown.classList.add('is-open');
+        input.setAttribute('aria-expanded', 'true');
+    }
+
+    /**
+     * Запрашивает компании по строке поиска.
+     *
+     * @param {string} query Строка запроса.
+     */
+    function requestSearch(query) {
+        BX.ajax({
+            url: '/local/activities/custom/companysearchsberactivity/page/ajax.php',
+            method: 'POST',
+            dataType: 'json',
+            data: { action: 'search', query: query },
+            onsuccess: function (response) {
+                spinner.hidden = true;
+                state.found = (response && response.companies) || [];
+                renderDropdown();
+            },
+            onfailure: function () {
+                spinner.hidden = true;
+                closeDropdown();
+            }
+        });
+    }
+
+    /**
+     * Загружает и показывает компании по алфавиту, пока поиск пуст.
+     */
+    function requestCompanyList() {
+        if (state.all !== null) {
+            state.found = state.all;
+            renderDropdown(BX.message('SBER_CONTENT_ALL_COMPANIES'));
+            return;
+        }
+
+        spinner.hidden = false;
+
+        BX.ajax({
+            url: '/local/activities/custom/companysearchsberactivity/page/ajax.php',
+            method: 'POST',
+            dataType: 'json',
+            data: { action: 'list' },
+            onsuccess: function (response) {
+                spinner.hidden = true;
+                state.all = (response && response.companies) || [];
+                state.found = state.all;
+
+                if (state.all.length) {
+                    renderDropdown(BX.message('SBER_CONTENT_ALL_COMPANIES'));
+                }
+            },
+            onfailure: function () {
+                spinner.hidden = true;
+            }
+        });
+    }
+
+    input.addEventListener('input', function () {
+        clearTimeout(state.timeout);
+
+        var query = input.value.trim();
+        clearBtn.classList.toggle('is-visible', input.value.length > 0);
+
+        if (query.length < 2) {
+            spinner.hidden = true;
+            state.found = [];
+
+            // Один символ: подсказываем, что ещё нужно, вместо пустого списка.
+            if (query.length === 1) {
+                dropdown.innerHTML = '<div class="sber-dropdown__empty">'
+                    + esc(BX.message('SBER_CONTENT_SEARCH_MIN')) + '</div>';
+                dropdown.classList.add('is-open');
+                input.setAttribute('aria-expanded', 'true');
+            } else {
+                closeDropdown();
+            }
+
+            return;
+        }
+
+        spinner.hidden = false;
+        state.timeout = setTimeout(function () {
+            requestSearch(query);
         }, 300);
     });
 
-/**
- * Показывает выбранную компанию, сохраняет её в недавние и рисует кнопку анализа.
- *
- * @param {Object} c Компания в формате {ID, TITLE, INN, KPP}.
- */
-function selectCompany(c) {
-        selectedCompany = c;
-        document.getElementById('selected-title').textContent = c.TITLE;
-        document.getElementById('selected-inn').textContent = c.INN || '—';
-        document.getElementById('selected-kpp').textContent = c.KPP || '—';
-        selectedBlock.style.display = 'block';
-        searchResults.style.display = 'none';
-        searchInput.value = c.TITLE;
-        resultBlock.style.display = 'none';
+    clearBtn.addEventListener('click', function () {
+        input.value = '';
+        clearBtn.classList.remove('is-visible');
+        spinner.hidden = true;
+        state.found = [];
+        closeDropdown();
+        input.focus();
+    });
 
-        // Перекладываем компанию в начало списка недавних
-        var recent = JSON.parse(localStorage.getItem('sber_recent_companies') || '[]');
-        recent = recent.filter(function(x) { return x.ID !== c.ID; });
-        recent.unshift(c);
-        recent = recent.slice(0, 5);
-        localStorage.setItem('sber_recent_companies', JSON.stringify(recent));
+    input.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') {
+            closeDropdown();
+            return;
+        }
+
+        if (event.key === 'Enter') {
+            var first = dropdown.querySelector('.sber-dropdown__item');
+            if (first) {
+                event.preventDefault();
+                first.click();
+            }
+        }
+    });
+
+    // Клик по пустому полю показывает все компании по алфавиту.
+    input.addEventListener('focus', function () {
+        if (input.value.trim() === '') {
+            requestCompanyList();
+            return;
+        }
+
+        if (state.found.length && dropdown.innerHTML !== '') {
+            dropdown.classList.add('is-open');
+            input.setAttribute('aria-expanded', 'true');
+        }
+    });
+
+    document.addEventListener('click', function (event) {
+        if (!dropdown.contains(event.target) && event.target !== input && !clearBtn.contains(event.target)) {
+            closeDropdown();
+        }
+    });
+
+    /* ---------- Выбор компании ---------- */
+
+    /**
+     * Показывает выбранную компанию, запоминает её и рисует кнопку запуска.
+     *
+     * @param {Object} company Компания в формате {ID, TITLE, INN, KPP}.
+     */
+    function selectCompany(company) {
+        state.company = company;
+
+        selectedTitle.textContent = company.TITLE;
+        selectedInn.textContent = company.INN || '—';
+        selectedKpp.textContent = company.KPP || '—';
+        companyCard.classList.add('is-visible');
+        resultSection.classList.remove('is-visible');
+
+        closeDropdown();
+        input.value = company.TITLE;
+        clearBtn.classList.add('is-visible');
+
+        var recent = readRecent().filter(function (item) {
+            return item.ID !== company.ID;
+        });
+        recent.unshift(company);
+        localStorage.setItem('sber_recent_companies', JSON.stringify(recent.slice(0, 5)));
         loadRecent();
 
-        // Создаём кнопку анализа
-        analyzeBtnContainer.style.display = 'block';
-        analyzeBtnContainer.innerHTML = '';
-        BX.loadExt('ui.buttons').then(function() {
-            analyzeButton = new BX.UI.Button({
+        if (String(company.ID).indexOf('inn') === 0) {
+            resolveManualName(company);
+        }
+
+        renderAnalyzeButton();
+    }
+
+    /**
+     * Подставляет название организации по ИНН (Dadata) и обновляет историю.
+     *
+     * @param {Object} company Компания ручного ввода.
+     */
+    function resolveManualName(company) {
+        BX.ajax({
+            url: '/local/activities/custom/companysearchsberactivity/page/ajax.php',
+            method: 'POST',
+            dataType: 'json',
+            data: { action: 'lookup', inn: company.INN },
+            onsuccess: function (response) {
+                if (!response || !response.name) {
+                    return;
+                }
+
+                company.TITLE = response.name;
+
+                if (state.company && state.company.ID === company.ID) {
+                    selectedTitle.textContent = response.name;
+                    input.value = response.name;
+                }
+
+                var recent = readRecent().map(function (item) {
+                    return item.ID === company.ID ? { ID: item.ID, TITLE: response.name, INN: item.INN, KPP: item.KPP } : item;
+                });
+
+                localStorage.setItem('sber_recent_companies', JSON.stringify(recent));
+                loadRecent();
+            }
+        });
+    }
+
+    /** Рисует кнопку «Проверить компанию» с откатом на обычную кнопку. */
+    function renderAnalyzeButton() {
+        analyzeBox.innerHTML = '';
+        state.button = null;
+
+        BX.loadExt('ui.buttons').then(function () {
+            state.button = new BX.UI.Button({
                 text: BX.message('SBER_CONTENT_BTN_ANALYZE'),
                 color: BX.UI.Button.Color.SUCCESS,
                 size: BX.UI.Button.Size.MEDIUM,
                 useAirDesign: true,
-                onclick: function() { runAnalysis(); }
+                onclick: function () {
+                    runAnalysis();
+                }
             });
-            analyzeButton.renderTo(analyzeBtnContainer);
-        });
+            state.button.renderTo(analyzeBox);
+        }, renderFallbackAnalyzeButton);
     }
 
-/**
- * Запрашивает анализ выбранной компании, при наличии PDF сначала парсит его.
- */
-function runAnalysis() {
-        if (!selectedCompany) return;
-        resultBlock.style.display = 'block';
-        resultContent.innerHTML = '<div style="color:#828b95;">' + BX.message('SBER_CONTENT_LOADING') + '</div>';
-        if (analyzeButton) analyzeButton.setDisabled(true);
+    /** Запасная кнопка анализа: нужна, если ui.buttons не загрузился. */
+    function renderFallbackAnalyzeButton() {
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'sber-btn sber-btn--primary';
+        button.textContent = BX.message('SBER_CONTENT_BTN_ANALYZE');
+        button.addEventListener('click', function () {
+            runAnalysis();
+        });
+        analyzeBox.appendChild(button);
+
+        // Повторяем интерфейс BX.UI.Button, который использует runAnalysis.
+        state.button = {
+            setDisabled: function (disabled) {
+                button.disabled = Boolean(disabled);
+            }
+        };
+    }
+
+    /* ---------- Запуск анализа ---------- */
+
+    /**
+     * Показывает состояние загрузки внутри блока результата.
+     *
+     * @param {string} text Подпись состояния.
+     */
+    function showLoading(text) {
+        // Скелетон повторяет структуру результата: сводка, плитки, строки.
+        var html = '<div class="sber-skeleton" role="status">'
+            + '<span class="sber-visually-hidden">' + esc(text) + '</span>'
+            + '<div class="sber-skeleton__verdict"></div>'
+            + '<div class="sber-skeleton__cards">';
+
+        for (var i = 0; i < 6; i++) {
+            html += '<div class="sber-skeleton__card"></div>';
+        }
+
+        html += '</div><div class="sber-skeleton__rows">';
+
+        for (var j = 0; j < 5; j++) {
+            html += '<div class="sber-skeleton__row"></div>';
+        }
+
+        html += '</div></div>';
+
+        resultContent.innerHTML = html;
+        resultSection.classList.add('is-visible');
+        resultSection.setAttribute('aria-busy', 'true');
+    }
+
+    /**
+     * Показывает ошибку анализа.
+     *
+     * @param {string} message Текст ошибки.
+     */
+    function showError(message) {
+        resultSection.removeAttribute('aria-busy');
+        resultContent.innerHTML = '<div class="ui-alert ui-alert-danger sber-alert" role="alert">'
+            + '<span class="ui-alert-message">' + esc(message) + '</span>'
+            + '</div>';
+        resultSection.classList.add('is-visible');
+    }
+
+    /** Запрашивает анализ выбранной компании и при наличии PDF разбирает его. */
+    function runAnalysis() {
+        if (!state.company) {
+            return;
+        }
+
+        showLoading(BX.message('SBER_CONTENT_LOADING'));
+        if (state.button) {
+            state.button.setDisabled(true);
+        }
 
         BX.ajax({
             url: '/local/activities/custom/companysearchsberactivity/page/ajax.php',
@@ -247,339 +713,927 @@ function runAnalysis() {
             dataType: 'json',
             data: {
                 action: 'analyze',
-                company_id: selectedCompany.ID,
-                inn: selectedCompany.INN,
-                kpp: selectedCompany.KPP
+                company_id: state.company.ID,
+                inn: state.company.INN,
+                kpp: state.company.KPP
             },
-            onsuccess: function(r) {
-                if (r.error) {
-                    if (analyzeButton) analyzeButton.setDisabled(false);
-                    resultContent.innerHTML = '<div class="ui-alert ui-alert-danger"><span class="ui-alert-message">' + r.error + '</span></div>';
+            onsuccess: function (response) {
+                if (!response || response.error) {
+                    if (state.button) {
+                        state.button.setDisabled(false);
+                    }
+                    showError((response && response.error) || BX.message('SBER_CONTENT_ERROR_REQUEST'));
                     return;
                 }
 
-                // Если есть PDF — парсим его, потом рисуем
-                if (r.report_file) {
-                    resultContent.innerHTML = '<div style="color:#828b95;">' + BX.message('SBER_CONTENT_PARSING') + '</div>';
-                    
-                    BX.ajax({
-                        url: '/local/activities/custom/companysearchsberactivity/page/parse_pdf.php',
-                        method: 'POST',
-                        dataType: 'json',
-                        data: {report_file: r.report_file},
-                        onsuccess: function(pdfRes) {
-                            if (analyzeButton) analyzeButton.setDisabled(false);
-                            if (!pdfRes.error) {
-                                r.pdfData = pdfRes;
-                            }
-                            renderResult(r);
-                        },
-                        onfailure: function() {
-                            if (analyzeButton) analyzeButton.setDisabled(false);
-                            renderResult(r);
-                        }
-                    });
-                } else {
-                    if (analyzeButton) analyzeButton.setDisabled(false);
-                    renderResult(r);
+                if (!response.report_file) {
+                    if (state.button) {
+                        state.button.setDisabled(false);
+                    }
+                    renderResult(response);
+                    return;
                 }
+
+                showLoading(BX.message('SBER_CONTENT_PARSING'));
+                BX.ajax({
+                    url: '/local/activities/custom/companysearchsberactivity/page/parse_pdf.php',
+                    method: 'POST',
+                    dataType: 'json',
+                    data: { report_file: response.report_file },
+                    onsuccess: function (pdfResponse) {
+                        if (state.button) {
+                            state.button.setDisabled(false);
+                        }
+                        if (pdfResponse && !pdfResponse.error) {
+                            response.pdfData = pdfResponse;
+                        }
+                        renderResult(response);
+                    },
+                    onfailure: function () {
+                        if (state.button) {
+                            state.button.setDisabled(false);
+                        }
+                        renderResult(response);
+                    }
+                });
             },
-            onfailure: function() {
-                if (analyzeButton) analyzeButton.setDisabled(false);
-                resultContent.innerHTML = '<div class="ui-alert ui-alert-danger"><span class="ui-alert-message">' + BX.message('SBER_CONTENT_ERROR_REQUEST') + '</span></div>';
+            onfailure: function () {
+                if (state.button) {
+                    state.button.setDisabled(false);
+                }
+                showError(BX.message('SBER_CONTENT_ERROR_REQUEST'));
             }
         });
     }
 
-/**
- * Отрисовывает карточки показателей, разделы отчёта и кнопку скачивания PDF.
- *
- * @param {Object} r Ответ analyze: {indicators, report_file, pdfData?}.
- */
-function renderResult(r) {
-    // indicators — из API (4 шт), pdfData.indicators — из PDF (6+ шт), приоритет у PDF.
-    var ind = (r.pdfData && r.pdfData.indicators) ? r.pdfData.indicators : {};
-    var apiInd = r.indicators || {};
+    /* ---------- Рендер результата ---------- */
 
-    // Цвет и подпись уровня риска (сравнения идут с кодами API, не с текстами)
     /**
-     * Возвращает цвет, иконку и подпись для уровня риска.
+     * Собирает карточки индикаторов: приоритет у данных из PDF.
      *
-     * @param {string} level Уровень из API или PDF.
+     * @param {Object} response Ответ analyze с возможным pdfData.
      *
-     * @returns {Object} Формат {color, icon, text}.
+     * @returns {Array} Карточки в формате {label, level, desc}.
      */
-    function getStatus(level) {
-        if (!level || level === 'Нет данных' || level === 'Нет оценки' || level === 'BLANK') {
-            return { color: '#828b95', icon: '⚪', text: BX.message('SBER_CONTENT_RISK_NONE') };
-        }
-        if (level.indexOf('Низкий') !== -1 || level === 'GREEN') {
-            return { color: '#00a859', icon: '✅', text: BX.message('SBER_CONTENT_RISK_LOW') };
-        }
-        if (level.indexOf('Средний') !== -1 || level === 'YELLOW') {
-            return { color: '#f5a623', icon: '⚠️', text: BX.message('SBER_CONTENT_RISK_MEDIUM') };
-        }
-        if (level.indexOf('Высокий') !== -1 || level === 'RED') {
-            return { color: '#e53935', icon: '❌', text: BX.message('SBER_CONTENT_RISK_HIGH') };
-        }
-        return { color: '#525c69', icon: 'ℹ️', text: level };
-    }
+    function collectCards(response) {
+        var cards = [];
+        var pdfIndicators = response.pdfData && response.pdfData.indicators;
 
-    // Список карточек: показатели из PDF, при их отсутствии — из API
-    var cards = [];
-    if (r.pdfData && r.pdfData.indicators) {
-        for (var key in r.pdfData.indicators) {
-            if (r.pdfData.indicators.hasOwnProperty(key)) {
-                cards.push(r.pdfData.indicators[key]);
-            }
+        if (pdfIndicators) {
+            Object.keys(pdfIndicators).forEach(function (key) {
+                var item = pdfIndicators[key];
+                if (!item) {
+                    return;
+                }
+                cards.push({
+                    label: item.label || BX.message('SBER_CONTENT_INDICATOR'),
+                    level: item.level,
+                    desc: item.desc || ''
+                });
+            });
+            return cards;
         }
-    } else {
-        if (apiInd.compliance) cards.push({ label: BX.message('SBER_CONTENT_LABEL_COMPLIANCE'), level: apiInd.compliance.level });
-        if (apiInd.state_sources) cards.push({ label: BX.message('SBER_CONTENT_LABEL_STATE_SOURCES'), level: apiInd.state_sources.level });
-        if (apiInd.finance) cards.push({ label: BX.message('SBER_CONTENT_LABEL_FINANCE'), level: apiInd.finance.level });
-        if (apiInd.sber_rating) cards.push({ label: BX.message('SBER_CONTENT_LABEL_RATING'), level: apiInd.sber_rating.level });
-    }
 
-    // Шапка результата
-    var html = '<div style="margin-bottom:24px;">';
-    html += '<h3 style="margin:0 0 8px;font-size:20px;font-weight:600;">' + (selectedCompany ? selectedCompany.TITLE : BX.message('SBER_CONTENT_COMPANY')) + '</h3>';
-    html += '<div style="font-size:14px;color:#525c69;">' + BX.message('SBER_CONTENT_L_INN') + (selectedCompany ? selectedCompany.INN : '—') + ' | ' + BX.message('SBER_CONTENT_L_KPP') + (selectedCompany ? selectedCompany.KPP : '—') + '</div>';
-    html += '</div>';
-
-    // Карточки в две колонки
-    html += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:24px;">';
-    cards.forEach(function(item) {
-        var status = getStatus(item.level);
-        html += '<div style="padding:16px;border:1px solid #e8ecf0;border-radius:16px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,0.04);">';
-        html += '<div style="font-size:13px;color:#525c69;margin-bottom:8px;">' + (item.label || BX.message('SBER_CONTENT_INDICATOR')) + '</div>';
-        html += '<div style="display:flex;align-items:center;gap:8px;">';
-        html += '<span style="font-size:18px;">' + status.icon + '</span>';
-        html += '<span style="font-weight:600;color:' + status.color + ';font-size:14px;">' + status.text + '</span>';
-        html += '</div>';
-        html += '</div>';
-    });
-    html += '</div>';
-
-    // Разделы отчёта с копированием значений
-    if (r.pdfData && r.pdfData.sections) {
-        html += '<div style="margin-top:24px;">';
-        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
-        html += '<h4 style="margin:0;font-size:16px;">' + BX.message('SBER_CONTENT_REPORT_DETAILS') + '</h4>';
-        if (r.report_file) {
-            html += '<div id="download-btn-top"></div>';
-        }
-        html += '</div>';
-        
-        var sections = r.pdfData.sections;
-        // Отображаемые названия разделов отчёта
-        var sectionTitles = {
-            'registration': BX.message('SBER_CONTENT_SEC_REGISTRATION'),
-            'finance': BX.message('SBER_CONTENT_SEC_FINANCE'),
-            'balance': BX.message('SBER_CONTENT_SEC_BALANCE'),
-            'courts': BX.message('SBER_CONTENT_SEC_COURTS'),
-            'contracts': BX.message('SBER_CONTENT_SEC_CONTRACTS'),
-            'taxes': BX.message('SBER_CONTENT_SEC_TAXES'),
-            'licenses': BX.message('SBER_CONTENT_SEC_LICENSES'),
-            'inspections': BX.message('SBER_CONTENT_SEC_INSPECTIONS'),
-            'reviews': BX.message('SBER_CONTENT_SEC_REVIEWS')
+        var api = response.indicators || {};
+        var apiMap = {
+            compliance: 'SBER_CONTENT_LABEL_COMPLIANCE',
+            state_sources: 'SBER_CONTENT_LABEL_STATE_SOURCES',
+            finance: 'SBER_CONTENT_LABEL_FINANCE',
+            sber_rating: 'SBER_CONTENT_LABEL_RATING'
         };
 
-        for (var key in sectionTitles) {
-            if (!sections[key]) continue;
-            
-            html += '<div style="margin-bottom:16px;border:1px solid #e8ecf0;border-radius:16px;overflow:hidden;background:#fff;">';
-            html += '<div style="padding:14px 18px;background:#fff;border-bottom:1px solid #f0f2f5;font-weight:600;font-size:14px;color:#2c3e50;">' + sectionTitles[key] + '</div>';
-            html += '<div style="padding:16px;font-size:13px;line-height:1.6;background:#fff;">';
-
-            if (key === 'balance') {
-                html += '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
-                html += '<thead><tr style="background:#f8f9fa;">';
-                html += '<th style="padding:10px 12px;text-align:left;font-weight:600;color:#525c69;font-size:12px;">' + BX.message('SBER_CONTENT_TH_INDICATOR') + '</th>';
-                html += '<th style="padding:10px 12px;text-align:center;font-weight:600;color:#525c69;font-size:12px;">' + BX.message('SBER_CONTENT_TH_CODE') + '</th>';
-                html += '<th style="padding:10px 12px;text-align:right;font-weight:600;color:#525c69;font-size:12px;">2023</th>';
-                html += '<th style="padding:10px 12px;text-align:right;font-weight:600;color:#525c69;font-size:12px;">2024</th>';
-                html += '<th style="padding:10px 12px;text-align:right;font-weight:600;color:#525c69;font-size:12px;">2025</th>';
-                html += '</tr></thead><tbody>';
+        Object.keys(apiMap).forEach(function (key) {
+            var item = api[key];
+            if (!item) {
+                return;
             }
+            var label = BX.message(apiMap[key]);
 
-            var lines = sections[key].split('\n');
-            for (var li = 0; li < lines.length; li++) {
-                var line = lines[li].trim();
-                if (!line) continue;
-                if (line.indexOf('==') === 0) continue;
-                
-                // Пропускаем мусорные строки
-                if (line.indexOf('Банк не несет') !== -1) continue;
-                if (line.indexOf('Информация, которая содержится') !== -1) continue;
-                if (line.indexOf('ответственности за') !== -1) continue;
-                if (line.indexOf('рекомендацией для принятия') !== -1) continue;
-                if (line.indexOf('«Безопасный бизнес»') !== -1) continue;
-                if (line.indexOf('Цветовых индикаторов') !== -1) continue;
-                if (line.indexOf('упущенную выгоду') !== -1) continue;
-                if (line.indexOf('третьим лицам') !== -1) continue;
-                if (line.indexOf('официальных открытых источников') !== -1) continue;
-                if (line.length < 2) continue;
+            cards.push({
+                label: label,
+                level: item.level,
+                // В API поле desc часто совпадает с названием — не дублируем.
+                desc: (item.desc && item.desc !== label) ? item.desc : ''
+            });
+        });
 
-                // Строка с " | " — таблица
-                if (line.indexOf('|') !== -1) {
-                    var parts = line.split('|');
-                    var cells = parts.map(function(p) { return p.trim(); });
-                    if (cells[0] === '' && cells.length > 1) cells.shift();
-
-                    // Бухгалтерский баланс: 5 колонок (показатель | код | три года)
-                    if (key === 'balance' && cells.length === 5) {
-                        html += '<tr>';
-                        html += '<td style="padding:8px 12px;border-bottom:1px solid #f0f2f4;font-size:13px;">' + cells[0] + '</td>';
-                        html += '<td style="padding:8px 12px;border-bottom:1px solid #f0f2f4;text-align:center;font-size:12px;color:#828b95;">' + cells[1] + '</td>';
-                        html += '<td style="padding:8px 12px;border-bottom:1px solid #f0f2f4;text-align:right;font-size:13px;">' + cells[2] + '</td>';
-                        html += '<td style="padding:8px 12px;border-bottom:1px solid #f0f2f4;text-align:right;font-size:13px;">' + cells[3] + '</td>';
-                        html += '<td style="padding:8px 12px;border-bottom:1px solid #f0f2f4;text-align:right;font-size:13px;">' + cells[4] + '</td>';
-                        html += '</tr>';
-                    }
-                    // Обычная пара «ключ | значение»
-                    else {
-                        var nonEmpty = cells.filter(function(c) { return c !== ''; });
-                        if (nonEmpty.length === 2) {
-                            var k = nonEmpty[0];
-                            var val = nonEmpty[1];
-                            html += '<div style="display:flex;padding:8px 4px;border-bottom:1px solid #f5f7fa;">';
-                            html += '<div style="flex:0 0 45%;color:#828b95;">' + k + '</div>';
-                            html += '<div style="flex:1;display:flex;justify-content:space-between;align-items:center;gap:8px;">';
-                            html += '<span style="font-weight:500;">' + val + '</span>';
-                            html += '<button style="padding:4px 10px;font-size:11px;border:1px solid #e0e5ea;border-radius:8px;background:#fff;color:#525c69;cursor:pointer;" onclick="copyText(this, \'' + escapeHtml(val).replace(/'/g, '\\\'') + '\')">' + BX.message('SBER_CONTENT_COPY') + '</button>';
-                            html += '</div>';
-                            html += '</div>';
-                        } else {
-                            // Больше 2 ячеек — выводим строкой
-                            html += '<div style="font-family:monospace;font-size:12px;padding:4px 0;border-bottom:1px solid #f5f5f5;white-space:pre-wrap;">' + line + '</div>';
-                        }
-                    }
-                }
-                // Строка "Ключ: Значение" (на случай, если склейка не сработала)
-                else if (line.indexOf(':') !== -1 && line.indexOf(':') < 50) {
-                    var idx = line.indexOf(':');
-                    var k = line.substring(0, idx).trim();
-                    var v = line.substring(idx + 1).trim();
-                    if (v !== '') {
-                        html += '<div style="display:flex;padding:8px 4px;border-bottom:1px solid #f5f7fa;border-radius:6px;">';
-                        html += '<div style="flex:0 0 45%;color:#828b95;">' + k + '</div>';
-                        html += '<div style="flex:1;display:flex;justify-content:space-between;align-items:center;gap:8px;">';
-                        html += '<span style="font-weight:500;">' + v + '</span>';
-                        html += '<button style="padding:4px 10px;font-size:11px;border:1px solid #e0e5ea;border-radius:8px;background:#fff;color:#525c69;cursor:pointer;" onclick="copyText(this, \'' + escapeHtml(v).replace(/'/g, '\\\'') + '\')">' + BX.message('SBER_CONTENT_COPY') + '</button>';
-                        html += '</div>';
-                        html += '</div>';
-                    } else {
-                        html += '<div style="padding:6px 0;color:#2c3e50;font-weight:600;">' + line + '</div>';
-                    }
-                }
-                // Обычный текст (заголовок или пояснение)
-                else {
-                    html += '<div style="padding:6px 0;color:#525c69;font-weight:500;">' + line + '</div>';
-                }
-            }
-
-            if (key === 'balance') {
-                html += '</tbody></table>';
-            }
-            html += '</div></div>';
-        }
-        html += '</div>';
+        return cards;
     }
 
+    /**
+     * Рисует сводку: общий уровень и распределение по уровням.
+     *
+     * @param {Array} cards Карточки индикаторов.
+     *
+     * @returns {string} HTML сводки.
+     */
+    function renderSummary(cards) {
+        var counts = { high: 0, medium: 0, low: 0, none: 0 };
+        var worst = 'none';
 
+        cards.forEach(function (card) {
+            var level = risk(card.level);
+            counts[level.code]++;
+            if (LEVEL_ORDER.indexOf(level.code) < LEVEL_ORDER.indexOf(worst)) {
+                worst = level.code;
+            }
+        });
 
-    resultContent.innerHTML = html;
+        var total = cards.length;
+        var html = '<div class="sber-verdict">';
+        html += '<div class="sber-verdict__main">';
+        html += '<span class="sber-verdict__label">' + esc(BX.message('SBER_CONTENT_SUMMARY_LABEL')) + '</span>';
+        html += '<span class="sber-verdict__value sber-verdict__value--' + worst + '">'
+            + esc(BX.message(LEVEL_TEXT[worst])) + '</span>';
+        html += '<p class="sber-verdict__meta">' + esc(plural(
+            total,
+            BX.message('SBER_CONTENT_ROWS_1'),
+            BX.message('SBER_CONTENT_ROWS_2'),
+            BX.message('SBER_CONTENT_ROWS_5')
+        )) + '</p>';
+        html += '</div>';
 
-    // Рендер кнопки скачивания (справа от «Детали отчёта»)
-    if (r.report_file && document.getElementById('download-btn-top')) {
-        BX.loadExt('ui.buttons').then(function() {
-            var btnDownload = new BX.UI.Button({
+        html += '<div class="sber-bars">';
+
+        LEVEL_ORDER.forEach(function (code) {
+            if (!counts[code]) {
+                return;
+            }
+
+            var width = Math.round((counts[code] / total) * 100);
+
+            html += '<div class="sber-bars__row">';
+            html += '<span class="sber-bars__name">' + esc(BX.message(LEVEL_TEXT[code])) + '</span>';
+            html += '<span class="sber-bars__track"><span class="sber-bars__fill sber-bars__fill--' + code
+                + '" style="width:' + width + '%"></span></span>';
+            html += '<span class="sber-bars__count">' + counts[code] + '</span>';
+            html += '</div>';
+        });
+
+        html += '</div></div>';
+
+        return html;
+    }
+
+    /**
+     * Рисует карточки индикаторов.
+     *
+     * @param {Array} cards Карточки индикаторов.
+     *
+     * @returns {string} HTML блока индикаторов.
+     */
+    function renderIndicators(cards) {
+        var html = '<div class="sber-indicators">';
+
+        cards.forEach(function (card) {
+            var level = risk(card.level);
+            html += '<div class="sber-indicator">';
+            html += '<div class="sber-indicator__label">' + esc(card.label) + '</div>';
+            html += '<span class="sber-indicator__level sber-indicator__level--' + level.code + '">'
+                + esc(level.text) + '</span>';
+            if (card.desc) {
+                html += '<p class="sber-indicator__desc">' + esc(card.desc) + '</p>';
+            }
+            html += '</div>';
+        });
+
+        html += '</div>';
+
+        return html;
+    }
+
+    /**
+     * Отбрасывает служебные строки PDF: дисклеймеры и подписи банка.
+     *
+     * @param {string} line Строка отчёта.
+     *
+     * @returns {boolean} true, если строку нужно выводить.
+     */
+    function isMeaningfulLine(line) {
+        var noise = [
+            'Банк не несет',
+            'Информация, которая содержится',
+            'ответственности за',
+            'рекомендацией для принятия',
+            '«Безопасный бизнес»',
+            'Цветовых индикаторов',
+            'упущенную выгоду',
+            'третьим лицам',
+            'официальных открытых источников',
+            'применения полученной информации',
+            'в том числе, но не исключая',
+            'использование и/или передачи информации',
+            'в собственных целях',
+            'не является'
+        ];
+
+        if (line.length < 2) {
+            return false;
+        }
+
+        return !noise.some(function (fragment) {
+            return line.indexOf(fragment) !== -1;
+        });
+    }
+
+    /**
+     * Проверяет, повторяет ли строка шапку таблицы отчёта.
+     *
+     * @param {string} line Строка отчёта.
+     *
+     * @returns {boolean} true, если это шапка «Показатель | Код | Сумма…».
+     */
+    function isTableHeader(line) {
+        return line.indexOf('Показатель') === 0 && line.indexOf('Код') !== -1;
+    }
+
+    /**
+     * Разбирает текст раздела на элементы: пары, таблицы и текстовые строки.
+     *
+     * Строки с тремя и более ячейками — это таблица (например, оценка
+     * финансового состояния), иначе они сливались бы в одну строку через «|».
+     *
+     * @param {string} sectionKey Ключ раздела.
+     * @param {string} raw        Текст раздела из PDF.
+     *
+     * @returns {Object} Формат {items, balance}.
+     */
+    function parseSection(sectionKey, raw) {
+        var result = { items: [], balance: [] };
+        var table = null;
+
+        /**
+         * Закрывает текущую таблицу.
+         */
+        function closeTable() {
+            if (table) {
+                result.items.push(table);
+                table = null;
+            }
+        }
+
+        String(raw || '').split('\n').forEach(function (rawLine) {
+            var line = rawLine.trim();
+
+            if (!line || line.indexOf('==') === 0 || !isMeaningfulLine(line)) {
+                return;
+            }
+
+            if (line.indexOf('|') !== -1) {
+                var cells = line.split('|').map(function (cell) {
+                    return cell.trim();
+                });
+
+                if (cells[0] === '' && cells.length > 1) {
+                    cells.shift();
+                }
+
+                if (sectionKey === 'balance' && cells.length === 5) {
+                    result.balance.push({
+                        name: cells[0],
+                        code: cells[1],
+                        values: [cells[2], cells[3], cells[4]]
+                    });
+                    return;
+                }
+
+                var filled = cells.filter(function (cell) {
+                    return cell !== '';
+                });
+
+                // «Средняя оценка: | 0.0 | (0 отзывов)» — это пара, а не таблица.
+                if (filled.length >= 3 && /:\s*$/.test(filled[0])) {
+                    closeTable();
+                    result.items.push({
+                        type: 'kv',
+                        key: filled[0].replace(/:\s*$/, '').trim(),
+                        value: filled.slice(1).join(' ')
+                    });
+                    return;
+                }
+
+                if (filled.length >= 3) {
+                    // Новая шапка внутри раздела начинает отдельную таблицу:
+                    // в разделе их бывает две (показатели и ликвидность).
+                    var looksLikeHeader = filled.every(function (cell) {
+                        return cell.length < 70 && !/\d/.test(cell) && !/риск|данн|оценк/i.test(cell);
+                    });
+
+                    if (table && looksLikeHeader && table.head.join('|') === filled.join('|')) {
+                        // Шапка повторяется на новой странице PDF — продолжаем таблицу.
+                        return;
+                    }
+
+                    if (!table || (table.rows.length > 0 && looksLikeHeader)) {
+                        closeTable();
+                        table = { type: 'table', head: filled, rows: [] };
+                        return;
+                    }
+
+                    // Колонок столько, сколько в самой широкой строке.
+                    var cellsCount = filled.length;
+                    while (table.head.length < cellsCount) {
+                        table.head.push('');
+                    }
+                    while (filled.length < cellsCount) {
+                        filled.push('');
+                    }
+                    if (filled.length > cellsCount) {
+                        filled = filled.slice(0, cellsCount);
+                    }
+
+                    table.rows.push(filled);
+                    return;
+                }
+
+                // Незакрытая таблица: любая строка не-шапка продолжает её,
+                // даже если ячеек меньше — иначе таблица рвётся на куски.
+                if (table && table.rows.length > 0) {
+                    var padded = filled.slice();
+                    while (padded.length < table.head.length) {
+                        padded.push('');
+                    }
+                    table.rows.push(padded.slice(0, table.head.length));
+                    return;
+                }
+
+                closeTable();
+
+                if (filled.length === 2) {
+                    result.items.push({ type: 'kv', key: filled[0], value: filled[1] });
+                    return;
+                }
+
+                result.items.push({ type: 'text', text: line });
+                return;
+            }
+
+            // «(активы)», «обязательств», «периода» — это продолжение названия
+            // строки таблицы, а не отдельный текст.
+            var looksLikeContinuation = /^[(a-zа-яё\-]/.test(line) && line.length < 90;
+
+            if (table && table.rows.length > 0 && looksLikeContinuation) {
+                var lastTableRow = table.rows[table.rows.length - 1];
+                lastTableRow[0] = lastTableRow[0] ? lastTableRow[0] + ' ' + line : line;
+                return;
+            }
+
+            closeTable();
+
+            var colonAt = line.indexOf(':');
+            if (colonAt !== -1 && colonAt < 50) {
+                var key = line.substring(0, colonAt).trim();
+                var value = line.substring(colonAt + 1).trim();
+
+                if (value !== '' && key !== '') {
+                    result.items.push({ type: 'kv', key: key, value: value });
+                    return;
+                }
+            }
+
+            var previousItem = result.items[result.items.length - 1];
+
+            if (line.length <= 3 && previousItem && previousItem.type === 'text') {
+                previousItem.text = previousItem.text + ' ' + line;
+                return;
+            }
+
+            if (line.length <= 3 && previousItem && previousItem.type === 'table' && previousItem.rows.length) {
+                var tail = previousItem.rows[previousItem.rows.length - 1];
+                var lastFilled = tail.length - 1;
+
+                while (lastFilled >= 0 && !tail[lastFilled]) {
+                    lastFilled--;
+                }
+
+                // Если значение уже закончено предложением или процентом,
+                // обрывок вроде «%» только дублирует его.
+                if (lastFilled >= 0 && !/[\d%.,]$/.test(tail[lastFilled])) {
+                    tail[lastFilled] += ' ' + line;
+                    return;
+                }
+            }
+
+            result.items.push({
+                type: 'text',
+                text: line,
+                heading: line.length < 60
+            });
+        });
+
+        closeTable();
+
+        result.items = mergeValueRows(result.items);
+
+        return result;
+    }
+
+    /**
+     * Склеивает строку значений со строкой подписей под ней.
+     *
+     * В отчёте Сбера для лицензий и проверок значения напечатаны над
+     * подписями: «0 | 0», ниже «всего | видов деятельности».
+     *
+     * @param {Array} items Элементы раздела.
+     *
+     * @returns {Array} Элементы с парами «подпись — значение».
+     */
+    function mergeValueRows(items) {
+        var out = [];
+
+        for (var i = 0; i < items.length; i++) {
+            var current = items[i];
+            var next = items[i + 1];
+
+            if (current.type === 'kv' && next && next.type === 'kv'
+                && isNumericCell(current.key) && isNumericCell(current.value)
+                && !isNumericCell(next.key) && !isNumericCell(next.value)
+            ) {
+                out.push({ type: 'kv', key: next.key, value: current.key });
+                out.push({ type: 'kv', key: next.value, value: current.value });
+                i++;
+                continue;
+            }
+
+            if (current.type === 'table' && current.rows.length === 2) {
+                var values = current.rows[0];
+                var labels = current.rows[1];
+                var allNumeric = values.every(isNumericCell);
+                var allLabels = labels.every(function (cell) {
+                    return cell !== '' && !isNumericCell(cell);
+                });
+
+                if (allNumeric && allLabels && values.length === labels.length) {
+                    for (var k = 0; k < labels.length; k++) {
+                        out.push({ type: 'kv', key: labels[k], value: values[k] });
+                    }
+                    continue;
+                }
+            }
+
+            out.push(current);
+        }
+
+        return out;
+    }
+
+    /**
+     * Проверяет, является ли текст числом.
+     *
+     * @param {string} value Значение.
+     *
+     * @returns {boolean}
+     */
+    function isNumericCell(value) {
+        var text = String(value === null || value === undefined ? '' : value).trim();
+        return text !== '' && /^[\d\s.,-]+$/.test(text) && /\d/.test(text);
+    }
+
+    /**
+     * Рисует таблицу бухгалтерского баланса.
+     *
+     * @param {Array} rows Строки баланса.
+     *
+     * @returns {string} HTML таблицы.
+     */
+    function renderBalance(rows) {
+        // Годы берём из шапки таблицы в PDF, а не из константы.
+        var years = (state.years && state.years.length === 3)
+            ? state.years
+            : ['2023', '2024', '2025'];
+
+        var html = '<div class="sber-table-wrap">';
+        html += '<table class="sber-table">';
+        html += '<thead><tr>';
+        html += '<th scope="col">' + esc(BX.message('SBER_CONTENT_TH_INDICATOR')) + '</th>';
+        html += '<th scope="col">' + esc(BX.message('SBER_CONTENT_TH_CODE')) + '</th>';
+        years.forEach(function (year) {
+            html += '<th scope="col">' + esc(year) + '</th>';
+        });
+        html += '</tr></thead><tbody>';
+
+        rows.forEach(function (row) {
+            html += '<tr>';
+            html += '<td>' + esc(row.name) + '</td>';
+            html += '<td>' + esc(row.code) + '</td>';
+            row.values.forEach(function (value) {
+                html += '<td>' + esc(formatNumber(value)) + '</td>';
+            });
+            html += '</tr>';
+        });
+
+        html += '</tbody></table></div>';
+
+        return html;
+    }
+
+    /**
+     * Рисует строку «ключ — значение» с кнопкой копирования.
+     *
+     * @param {Object} row Строка раздела.
+     *
+     * @returns {string} HTML строки.
+     */
+    function renderRow(item) {
+        if (item.type === 'text') {
+            var modifier = item.heading ? ' sber-row--heading' : '';
+            return '<li class="sber-row' + modifier + '"><span class="sber-row__text">'
+                + esc(item.text) + '</span></li>';
+        }
+
+        return '<li class="sber-row">'
+            + '<span class="sber-row__key">' + esc(item.key) + '</span>'
+            + '<div class="sber-row__value">' + renderValue(item.value) + '</div>'
+            + '<button type="button" class="sber-row__copy" data-copy="' + esc(item.value) + '"'
+            + ' title="' + esc(BX.message('SBER_CONTENT_COPY')) + '"'
+            + ' aria-label="' + esc(BX.message('SBER_CONTENT_COPY')) + '">'
+            + '<svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true" focusable="false">'
+            + '<rect x="4.5" y="4.5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"></rect>'
+            + '<path d="M9.5 4.5V3a1.5 1.5 0 0 0-1.5-1.5H3A1.5 1.5 0 0 0 1.5 3v5A1.5 1.5 0 0 0 3 9.5h1.5" fill="none" stroke="currentColor" stroke-width="1.3"></path>'
+            + '</svg>'
+            + '</button></li>';
+    }
+
+    /**
+     * Рисует значение строки: виды деятельности с ОКВЭД — списком,
+     * остальное — как есть с разбивкой разрядов.
+     *
+     * @param {string} value Значение из отчёта.
+     *
+     * @returns {string} HTML значения.
+     */
+    function renderValue(value) {
+        var text = String(value === null || value === undefined ? '' : value);
+
+        if (text.indexOf('ОКВЭД') === -1) {
+            return esc(formatNumber(text));
+        }
+
+        var items = [];
+        var pattern = /(.*?)ОКВЭД\s*([\d.]+)/g;
+        var match;
+
+        while ((match = pattern.exec(text)) !== null) {
+            var name = match[1].trim();
+
+            if (name) {
+                items.push({ name: name, code: match[2] });
+            }
+        }
+
+        if (!items.length) {
+            return esc(text);
+        }
+
+        var html = '<ul class="sber-okved">';
+
+        items.forEach(function (item) {
+            html += '<li class="sber-okved__item">'
+                + '<span class="sber-okved__name">' + esc(item.name) + '</span>'
+                + '<span class="sber-okved__code">' + esc(item.code) + '</span>'
+                + '</li>';
+        });
+
+        return html + '</ul>';
+    }
+
+    /**
+     * Рисует таблицу раздела (три и более колонок в PDF).
+     *
+     * @param {Object} table Таблица вида {head, rows}.
+     *
+     * @returns {string} HTML таблицы.
+     */
+    function renderTable(table) {
+        var html = '<div class="sber-table-wrap"><table class="sber-table sber-table--data">';
+
+        if (table.head && table.head.length) {
+            html += '<thead><tr>';
+            table.head.forEach(function (cell) {
+                html += '<th scope="col">' + esc(cell) + '</th>';
+            });
+            html += '</tr></thead>';
+        }
+
+        html += '<tbody>';
+        table.rows.forEach(function (row) {
+            html += '<tr>';
+            row.forEach(function (cell) {
+                // Числа выравниваем по правому краю и держим табличные цифры.
+                var numeric = /^[\d\s.,-]+$/.test(cell) && /\d/.test(cell);
+                html += '<td' + (numeric ? ' class="is-num"' : '') + '>'
+                    + esc(numeric ? formatNumber(cell.replace(/\s+/g, '')) : cell) + '</td>';
+            });
+            html += '</tr>';
+        });
+
+        return html + '</tbody></table></div>';
+    }
+
+    /**
+     * Рисует элементы раздела в исходном порядке: пары, таблицы, текст.
+     *
+     * @param {Array} items Элементы из parseSection.
+     *
+     * @returns {string} HTML содержимого раздела.
+     */
+    function renderItems(items) {
+        var html = '';
+        var buffer = [];
+
+        /**
+         * Выводит накопленные строки списком.
+         */
+        function flush() {
+            if (!buffer.length) {
+                return;
+            }
+
+            html += '<ul class="sber-rows">' + buffer.map(renderRow).join('') + '</ul>';
+            buffer = [];
+        }
+
+        items.forEach(function (item) {
+            if (item.type === 'table') {
+                flush();
+                html += renderTable(item);
+                return;
+            }
+
+            buffer.push(item);
+        });
+
+        flush();
+
+        return html;
+    }
+
+    /**
+     * Рисует раздел отчёта в виде раскрывающегося блока.
+     *
+     * @param {string} title      Название раздела.
+     * @param {Object} parsed     Результат parseSection.
+     * @param {boolean} openByDefault Раскрыть ли раздел по умолчанию.
+     *
+     * @returns {string} HTML секции.
+     */
+    function renderSection(title, parsed, openByDefault) {
+        var count = parsed.balance.length;
+
+        parsed.items.forEach(function (item) {
+            if (item.type === 'kv') {
+                count++;
+            } else if (item.type === 'table') {
+                count += item.rows.length;
+            }
+        });
+
+        var countLabel = plural(
+            count,
+            BX.message('SBER_CONTENT_ROWS_1'),
+            BX.message('SBER_CONTENT_ROWS_2'),
+            BX.message('SBER_CONTENT_ROWS_5')
+        );
+
+        var html = '<details class="sber-section"' + (openByDefault ? ' open' : '') + '>';
+        html += '<summary class="sber-section__summary">';
+        html += '<svg class="sber-section__chevron" viewBox="0 0 10 10" aria-hidden="true" focusable="false">'
+            + '<path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6"'
+            + ' stroke-linecap="round" stroke-linejoin="round"></path></svg>';
+        html += '<span class="sber-section__name">' + esc(title) + '</span>';
+        html += '<span class="sber-section__count">' + esc(countLabel) + '</span>';
+        html += '</summary>';
+        html += '<div class="sber-section__body">';
+
+        if (parsed.balance.length) {
+            html += renderBalance(parsed.balance);
+        }
+
+        html += renderItems(parsed.items);
+
+        if (!count) {
+            html += '<div class="sber-empty">' + esc(BX.message('SBER_CONTENT_NO_DETAILS')) + '</div>';
+        }
+
+        html += '</div></details>';
+
+        return html;
+    }
+
+    /**
+     * Рисует блок разделов отчёта.
+     *
+     * @param {Object} sections Разделы из PDF-парсера.
+     *
+     * @returns {string} HTML блока разделов.
+     */
+    function renderSections(sections) {
+        var titles = [
+            ['registration', 'SBER_CONTENT_SEC_REGISTRATION'],
+            ['finance', 'SBER_CONTENT_SEC_FINANCE'],
+            ['balance', 'SBER_CONTENT_SEC_BALANCE'],
+            ['results', 'SBER_CONTENT_SEC_RESULTS'],
+            ['courts', 'SBER_CONTENT_SEC_COURTS'],
+            ['contracts', 'SBER_CONTENT_SEC_CONTRACTS'],
+            ['taxes', 'SBER_CONTENT_SEC_TAXES'],
+            ['licenses', 'SBER_CONTENT_SEC_LICENSES'],
+            ['inspections', 'SBER_CONTENT_SEC_INSPECTIONS'],
+            ['reviews', 'SBER_CONTENT_SEC_REVIEWS']
+        ];
+
+        var blocks = '';
+        var opened = 0;
+
+        titles.forEach(function (pair) {
+            var text = sections[pair[0]];
+            if (!text) {
+                return;
+            }
+
+            var parsed = parseSection(pair[0], text);
+
+            var sectionCount = parsed.balance.length;
+
+            parsed.items.forEach(function (item) {
+                if (item.type === 'kv') {
+                    sectionCount++;
+                } else if (item.type === 'table') {
+                    sectionCount += item.rows.length;
+                }
+            });
+
+            if (!sectionCount) {
+                return;
+            }
+
+            // Первые два раздела показываем раскрытыми: они чаще всего нужны.
+            var openByDefault = opened < 2;
+            if (openByDefault) {
+                opened++;
+            }
+
+            blocks += renderSection(
+                BX.message(pair[1]),
+                parsed,
+                openByDefault
+            );
+        });
+
+        if (!blocks) {
+            return '';
+        }
+
+        var html = '<div class="sber-sections">';
+        html += '<div class="sber-sections__toolbar">';
+        html += '<h3 class="sber-sections__title">' + esc(BX.message('SBER_CONTENT_REPORT_DETAILS')) + '</h3>';
+        html += '<div class="sber-sections__actions">';
+        html += '<div id="download-btn-slot"></div>';
+        html += '<button type="button" class="sber-sections__toggle" data-toggle-all="expand">'
+            + esc(BX.message('SBER_CONTENT_EXPAND_ALL')) + '</button>';
+        html += '</div>';
+        html += '</div>';
+        html += blocks;
+        html += '</div>';
+
+        return html;
+    }
+
+    /**
+     * Отрисовывает шапку результата, сводку, индикаторы и разделы отчёта.
+     *
+     * @param {Object} response Ответ analyze с добавленным pdfData.
+     */
+    function renderResult(response) {
+        resultSection.removeAttribute('aria-busy');
+
+        state.years = response.years || [];
+
+        var cards = collectCards(response);
+        var sections = (response.pdfData && response.pdfData.sections) || {};
+
+        var html = '';
+
+        if (cards.length) {
+            html += renderSummary(cards);
+            html += renderIndicators(cards);
+        }
+
+        var sectionsHtml = renderSections(sections);
+        html += sectionsHtml;
+
+        if (!cards.length && !sectionsHtml) {
+            html += '<div class="sber-empty">' + esc(BX.message('SBER_CONTENT_NO_DETAILS')) + '</div>';
+        }
+
+        resultContent.innerHTML = html;
+        resultSection.classList.add('is-visible');
+
+        mountDownloadButton(response.report_file);
+    }
+
+    /**
+     * Рисует кнопку скачивания PDF-отчёта.
+     *
+     * @param {string} reportFile Путь к сохранённому отчёту.
+     */
+    function mountDownloadButton(reportFile) {
+        var slot = document.getElementById('download-btn-slot');
+
+        if (!slot) {
+            slot = document.createElement('div');
+            slot.id = 'download-btn-slot';
+            resultContent.insertBefore(slot, resultContent.firstChild);
+        }
+
+        if (!reportFile) {
+            return;
+        }
+
+        BX.loadExt('ui.buttons').then(function () {
+            var button = new BX.UI.Button({
                 text: BX.message('SBER_CONTENT_DOWNLOAD_PDF'),
                 color: BX.UI.Button.Color.PRIMARY,
                 size: BX.UI.Button.Size.SMALL,
                 useAirDesign: true,
                 tag: BX.UI.Button.Tag.LINK,
-                link: r.report_file,
-                props: {target: '_blank'}
+                link: reportFile,
+                props: { target: '_blank', rel: 'noopener' }
             });
-            btnDownload.renderTo(document.getElementById('download-btn-top'));
+            button.renderTo(slot);
+        }, function () {
+            var link = document.createElement('a');
+            link.className = 'sber-btn';
+            link.href = reportFile;
+            link.target = '_blank';
+            link.rel = 'noopener';
+            link.textContent = BX.message('SBER_CONTENT_DOWNLOAD_PDF');
+            slot.appendChild(link);
         });
     }
-}
 
-    // Закрытие результатов поиска при клике вне
-    document.addEventListener('click', function(e) {
-        if (!searchResults.contains(e.target) && e.target !== searchInput) {
-            searchResults.style.display = 'none';
+    /* ---------- Взаимодействие с результатом ---------- */
+
+    /**
+     * Копирует значение строки в буфер обмена.
+     *
+     * @param {HTMLElement} button Кнопка копирования.
+     */
+    function copyValue(button) {
+        var text = button.getAttribute('data-copy') || '';
+
+        function markDone() {
+            button.classList.add('is-done');
+            button.setAttribute('aria-label', BX.message('SBER_CONTENT_COPIED'));
+            setTimeout(function () {
+                button.classList.remove('is-done');
+                button.setAttribute('aria-label', BX.message('SBER_CONTENT_COPY'));
+            }, 1400);
         }
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(markDone, function () {});
+            return;
+        }
+
+        // Откат для окружений без Clipboard API (http, старые браузеры).
+        var area = document.createElement('textarea');
+        area.value = text;
+        area.setAttribute('readonly', 'readonly');
+        area.style.position = 'fixed';
+        area.style.opacity = '0';
+        document.body.appendChild(area);
+        area.select();
+        try {
+            document.execCommand('copy');
+            markDone();
+        } finally {
+            document.body.removeChild(area);
+        }
+    }
+
+    resultContent.addEventListener('click', function (event) {
+        var copyButton = event.target.closest('.sber-row__copy');
+        if (copyButton) {
+            copyValue(copyButton);
+            return;
+        }
+
+        var toggle = event.target.closest('[data-toggle-all]');
+        if (!toggle) {
+            return;
+        }
+
+        var expand = toggle.getAttribute('data-toggle-all') === 'expand';
+        resultContent.querySelectorAll('.sber-section').forEach(function (section) {
+            section.open = expand;
+        });
+
+        toggle.setAttribute('data-toggle-all', expand ? 'collapse' : 'expand');
+        toggle.textContent = BX.message(expand ? 'SBER_CONTENT_COLLAPSE_ALL' : 'SBER_CONTENT_EXPAND_ALL');
     });
-
-/**
- * Загружает и показывает текстовую версию PDF-отчёта.
- *
- * @param {string} reportUrl Путь к сохранённому PDF-отчёту.
- */
-function loadPdfText(reportUrl) {
-        var block = document.getElementById('pdf-text-result');
-        var content = document.getElementById('pdf-text-content');
-        
-        if (!block) {
-            var container = document.createElement('div');
-            container.id = 'pdf-text-result';
-            container.style.marginTop = '20px';
-            container.innerHTML = '<div class="ui-card" style="padding:24px;"><h3 style="margin:0 0 16px;font-size:18px;">' + BX.message('SBER_CONTENT_REPORT_TEXT') + '</h3><pre id="pdf-text-content" style="white-space:pre-wrap;max-height:500px;overflow-y:auto;font-size:13px;line-height:1.5;"></pre></div>';
-            document.body.appendChild(container);
-            block = document.getElementById('pdf-text-result');
-            content = document.getElementById('pdf-text-content');
-        }
-        
-        block.style.display = 'block';
-        content.textContent = BX.message('SBER_CONTENT_LOADING');
-        
-        BX.ajax({
-            url: '/local/activities/custom/companysearchsberactivity/page/parse_pdf.php',
-            method: 'POST',
-            dataType: 'json',
-            data: {report_file: reportUrl},
-            onsuccess: function(res) {
-                if (res.error) {
-                    content.textContent = BX.message('SBER_CONTENT_ERROR_PREFIX') + res.error;
-                } else {
-                    content.textContent = res.text;
-                }
-            },
-            onfailure: function() {
-                content.textContent = BX.message('SBER_CONTENT_ERROR_REQUEST_SERVER');
-            }
-        });
-    }
 
     loadRecent();
 });
-
-/**
- * Копирует текст в буфер обмена и подсвечивает успех в кнопке.
- *
- * @param {HTMLElement} btn Кнопка-инициатор.
- * @param {string}      text Текст для копирования.
- */
-function copyText(btn, text) {
-    navigator.clipboard.writeText(text).then(function() {
-        btn.textContent = '✓';
-        setTimeout(function() { btn.textContent = BX.message('SBER_CONTENT_COPY'); }, 1500);
-    });
-}
-
-/**
- * Экранирует HTML-спецсимволы строки.
- *
- * @param {string} str Исходное значение.
- *
- * @returns {string} Безопасное для вставки в HTML значение.
- */
-function escapeHtml(str) {
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
 </script>
 
 </body>
