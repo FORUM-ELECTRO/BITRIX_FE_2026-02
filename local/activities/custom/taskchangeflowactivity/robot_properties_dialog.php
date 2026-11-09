@@ -12,24 +12,46 @@ use Bitrix\Main\Web\Json;
 /** @var \Bitrix\Bizproc\Activity\PropertiesDialog $dialog */
 
 $map = $dialog->getMap();
-$field = $map['FlowId'];
+$flowField = $map['FlowId'];
 
 $selectedFlowId = null;
-$currentValue = $dialog->getCurrentValue($field['FieldName']);
+$currentValue = $dialog->getCurrentValue($flowField['FieldName']);
 if (!empty($currentValue) && is_numeric($currentValue))
 {
 	$selectedFlowId = (int)$currentValue;
 }
 
 $preselectedJs = $selectedFlowId ? Json::encode([['flow', $selectedFlowId]]) : 'undefined';
+
+$keepDeadlineField = $map['KeepDeadline'];
+$keepDeadlineRaw = $dialog->getCurrentValue($keepDeadlineField['FieldName']);
+$keepDeadlineChecked = ($keepDeadlineRaw === null || $keepDeadlineRaw === '')
+	? true
+	: CBPHelper::getBool($keepDeadlineRaw);
 ?>
 <div class="bizproc-automation-popup-settings">
 	<span class="bizproc-automation-popup-settings-title bizproc-automation-popup-settings-title-autocomplete">
-		<?= htmlspecialcharsbx($field['Name']) ?>:
+		<?= htmlspecialcharsbx($flowField['Name']) ?>:
 	</span>
 	<div id="bizproc-taskchangeflowactivity-flow-id" class="bizproc-type-control-string"></div>
-	<input type="hidden" name="<?= htmlspecialcharsbx($field['FieldName']) ?>" value="<?= htmlspecialcharsbx((string)$selectedFlowId) ?>">
+	<input type="hidden" name="<?= htmlspecialcharsbx($flowField['FieldName']) ?>" value="<?= htmlspecialcharsbx((string)$selectedFlowId) ?>">
 </div>
+
+<div class="bizproc-automation-popup-settings">
+	<span class="bizproc-automation-popup-settings-title bizproc-automation-popup-settings-title-autocomplete">
+		<?= htmlspecialcharsbx($map['ModifiedBy']['Name']) ?>:
+	</span>
+	<?= $dialog->renderFieldControl($map['ModifiedBy']) ?>
+</div>
+
+<div class="bizproc-automation-popup-checkbox-item">
+	<label class="bizproc-automation-popup-chk-label">
+		<input type="hidden" name="<?= htmlspecialcharsbx($keepDeadlineField['FieldName']) ?>" value="N">
+		<input type="checkbox" name="<?= htmlspecialcharsbx($keepDeadlineField['FieldName']) ?>" value="Y" class="bizproc-automation-popup-chk" <?= $keepDeadlineChecked ? 'checked' : '' ?>>
+		<?= htmlspecialcharsbx($keepDeadlineField['Name']) ?>
+	</label>
+</div>
+
 <script>
 	BX.Event.ready(function ()
 	{
@@ -40,7 +62,7 @@ $preselectedJs = $selectedFlowId ? Json::encode([['flow', $selectedFlowId]]) : '
 			return;
 		}
 
-		const hiddenInput = form.querySelector('input[name="<?= CUtil::JSEscape($field['FieldName']) ?>"]');
+		const hiddenInput = form.querySelector('input[name="<?= CUtil::JSEscape($flowField['FieldName']) ?>"]');
 		if (!hiddenInput)
 		{
 			return;
