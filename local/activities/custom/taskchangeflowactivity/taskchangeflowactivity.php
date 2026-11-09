@@ -8,12 +8,17 @@ if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true)
 use Bitrix\Main\Localization\Loc;
 use Bitrix\Tasks\Access\ActionDictionary;
 use Bitrix\Tasks\Access\TaskAccessController;
+use Bitrix\Tasks\Flow\Control\Task\Field\FlowFieldHandler;
+use Bitrix\Tasks\Flow\Internal\Link\FlowLink;
 use Bitrix\Tasks\Integration\BizProc\NodeFilter\TargetDocumentResolverTrait;
 
 \Bitrix\Main\Loader::includeModule('tasks');
 
 /**
- * Робот «Изменить поток»: меняет поток у текущей задачи.
+ * Робот «Изменить поток»: меняет поток (Bitrix24 Flows) у текущей задачи.
+ * FLOW_ID хранится в b_tasks_flow_task, поэтому смена потока выполняется через FlowLink
+ * (unlink + link), а поля задачи (группа, ответственный, контроль) пересчитываются FlowFieldHandler.
+ * Чекбокс «Сохранить крайний срок» управляет восстановлением прежнего DEADLINE.
  */
 class CBPTaskChangeFlowActivity extends CBPActivity
 {
@@ -26,6 +31,8 @@ class CBPTaskChangeFlowActivity extends CBPActivity
 		$this->arProperties = [
 			'Title' => '',
 			'FlowId' => null,
+			'ModifiedBy' => null,
+			'KeepDeadline' => true,
 			// return
 			'ErrorMessage' => null,
 		];
@@ -60,14 +67,11 @@ class CBPTaskChangeFlowActivity extends CBPActivity
 
 		$taskId = (int)$documentId[2];
 
+		// Действующее лицо: явный «изменить от имени» либо стартер процесса.
 		$modifiedBy = method_exists($this, 'getModifiedByOrStarter')
 			? $this->getModifiedByOrStarter()
 			: $this->ModifiedBy;
-		$userId = 0;
-		if (is_string($modifiedBy) && preg_match('/^user_(\d+)$/', $modifiedBy, $m))
-		{
-			$userId = (int)$m[1];
-		}
+		$userId = (int)\CBPHelper::ExtractUsers($modifiedBy, $documentId, true);
 		$userId = $userId > 0 ? $userId : 1;
 
 		if (!TaskAccessController::can($userId, ActionDictionary::ACTION_TASK_EDIT, $taskId))
@@ -77,10 +81,94 @@ class CBPTaskChangeFlowActivity extends CBPActivity
 			return CBPActivityExecutionStatus::Closed;
 		}
 
+		// Текущий крайний срок — смена потока пересчитывает DEADLINE по настройкам потока.
+		$runtime = CBPRuntime::GetRuntime();
+		/** @var CBPDocumentService $ds */
+		$ds = $runtime->GetService('DocumentService');
+
+		if (defined('\CBPDocument::PARAM_USED_DOCUMENT_FIELDS'))
+		{
+			$document = $ds->GetDocument($documentId, select: ['DEADLINE', 'FLOW_ID']);
+		}
+		else
+		{
+			$document = $ds->GetDocument($documentId);
+		}
+		$oldDeadline = $document['DEADLINE'] ?? null;
+		$oldFlowId = (int)($document['FLOW_ID'] ?? 0);
+
+		$keepDeadline = CBPHelper::getBool($this->KeepDeadline);
+
 		try
 		{
-			$task = \CTaskItem::getInstance($taskId, $userId);
-			$task->update(['FLOW_ID' => $flowId]);
+			$taskData = \CTasks::GetByID($taskId, false)->fetch();
+			if (!$taskData)
+			{
+				$this->writeError(Loc::getMessage('TASK_CHANGE_FLOW_ERROR_NO_TASK'));
+
+				return CBPActivityExecutionStatus::Closed;
+			}
+
+			// Пересчитать поля потока: ответственный, группа, контроль, срок.
+			$handler = new FlowFieldHandler($flowId, $userId);
+			$skipTimeZoneFields = [];
+			$fields = ['FLOW_ID' => $flowId];
+			$handler->modify($fields, $skipTimeZoneFields, $taskData);
+
+			if (!isset($fields['FLOW_ID']))
+			{
+				// Поток неактивен — менять нечего.
+				$this->writeError(Loc::getMessage('TASK_CHANGE_FLOW_FLOW_NOT_ACTIVE'));
+
+				return CBPActivityExecutionStatus::Closed;
+			}
+
+			unset($fields['FLOW_ID']);
+			if ($keepDeadline)
+			{
+				unset($fields['DEADLINE']);
+			}
+
+			// Обновить поля задачи (без FLOW_ID — связь потока меняется отдельно).
+			if (!empty($fields))
+			{
+				try
+				{
+					\Bitrix\Tasks\Integration\Bizproc\Document\Task::updateDocument(
+						$taskId,
+						$fields,
+						$userId
+					);
+				}
+				catch (Exception $e)
+				{
+					$this->writeError($e->getMessage());
+				}
+			}
+
+			// Сменить связь потока (b_tasks_flow_task). Делается последней и всегда.
+			if ($oldFlowId !== $flowId)
+			{
+				FlowLink::unlink($taskId);
+				FlowLink::link($flowId, $taskId);
+			}
+
+			// Вернуть прежний крайний срок, если разрешено.
+			if ($keepDeadline && !empty($oldDeadline))
+			{
+				try
+				{
+					\Bitrix\Tasks\Integration\Bizproc\Document\Task::updateDocument(
+						$taskId,
+						['DEADLINE' => $oldDeadline],
+						$userId
+					);
+				}
+				catch (Exception $e)
+				{
+					$this->writeError($e->getMessage());
+				}
+			}
 		}
 		catch (Exception $e)
 		{
@@ -137,6 +225,17 @@ class CBPTaskChangeFlowActivity extends CBPActivity
 				'Type' => 'int',
 				'Required' => true,
 			],
+			'ModifiedBy' => [
+				'Name' => Loc::getMessage('TASK_CHANGE_FLOW_MODIFIED_BY'),
+				'FieldName' => 'modified_by',
+				'Type' => 'user',
+			],
+			'KeepDeadline' => [
+				'Name' => Loc::getMessage('TASK_CHANGE_FLOW_KEEP_DEADLINE'),
+				'FieldName' => 'keep_deadline',
+				'Type' => 'bool',
+				'Default' => 'Y',
+			],
 		]);
 
 		return $dialog;
@@ -148,6 +247,8 @@ class CBPTaskChangeFlowActivity extends CBPActivity
 
 		$properties = [
 			'FlowId' => (int)($arCurrentValues['flow_id'] ?? 0),
+			'ModifiedBy' => CBPHelper::UsersStringToArray($arCurrentValues['modified_by'], $documentType, $errors),
+			'KeepDeadline' => ($arCurrentValues['keep_deadline'] ?? 'Y') === 'Y' ? 'Y' : 'N',
 		];
 
 		$errors = self::ValidateProperties($properties, new CBPWorkflowTemplateUser(CBPWorkflowTemplateUser::CurrentUser));
