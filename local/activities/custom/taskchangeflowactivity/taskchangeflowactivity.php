@@ -15,10 +15,7 @@ use Bitrix\Tasks\Integration\BizProc\NodeFilter\TargetDocumentResolverTrait;
 \Bitrix\Main\Loader::includeModule('tasks');
 
 /**
- * Робот «Изменить поток»: меняет поток (Bitrix24 Flows) у текущей задачи.
- * FLOW_ID хранится в b_tasks_flow_task, поэтому смена потока выполняется через FlowLink
- * (unlink + link), а поля задачи (группа, ответственный, контроль) пересчитываются FlowFieldHandler.
- * Чекбокс «Сохранить крайний срок» управляет восстановлением прежнего DEADLINE.
+ * Робот «Изменить поток»
  */
 class CBPTaskChangeFlowActivity extends CBPActivity
 {
