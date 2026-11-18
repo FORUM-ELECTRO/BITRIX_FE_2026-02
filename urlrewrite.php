@@ -1792,14 +1792,6 @@ $arUrlRewrite=array (
     'PATH' => '/site_oo/mail/index.php',
     'SORT' => 100,
   ),
-  245 => 
-  array (
-    'CONDITION' => '#^/bi/dashboard/#',
-    'RULE' => '',
-    'ID' => 'bitrix:biconnector.apachesuperset.dashboard.controller',
-    'PATH' => '/bi/dashboard/index.php',
-    'SORT' => 100,
-  ),
   282 => 
   array (
     'CONDITION' => '#^/desktop/menu/#',
