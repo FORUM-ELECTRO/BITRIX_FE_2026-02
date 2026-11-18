@@ -1,0 +1,17 @@
+/**
+ * Стили кнопок чатов в компактной навигации мессенджера.
+ */
+.fg-im-chat-buttons__item {
+	--ui-icon-set__icon-size: 24px;
+}
+
+.fg-im-chat-buttons__item .bx-im-compact-navigation__icon-counter[hidden] {
+	display: none;
+}
+
+/**
+ * Счётчик — оранжевый вместо штатного красного.
+ */
+.fg-im-chat-buttons__item--channels {
+	--im-compact-navigation__background_color_counter: #ff6600;
+}
